@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Widget dev page: a business website</title>
+    <!--
+      Deliberately hostile host styles: the widget renders in a Shadow DOM and
+      must look the same whatever the page does.
+    -->
+    <style>
+      * {
+        font-family: Georgia, serif !important;
+        color: darkred;
+      }
+      body {
+        max-width: 700px;
+        margin: 3rem auto;
+        font-size: 20px;
+      }
+      button,
+      input,
+      textarea {
+        border: 3px dashed orange;
+        background: yellow;
+        padding: 2rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>ABC Properties</h1>
+    <p>
+      A stand-in for a business's own website. The chat bubble in the corner is the widget, loaded
+      by the script tag below. Change <code>data-widget-key</code> to a key from the
+      <code>widget</code> table.
+    </p>
+    <p><button type="button">A host page button</button></p>
+
+    <script
+      type="module"
+      src="/src/main.ts"
+      data-widget-key="wgt_demo"
+      data-api-url="http://localhost:8080"
+    ></script>
+  </body>
+</html>

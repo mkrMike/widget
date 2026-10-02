@@ -1,0 +1,455 @@
+/* Scoped to the widget's Shadow DOM: nothing here reaches the host page. */
+
+:host {
+  /* Don't inherit fonts, colours or sizes from the host page. */
+  all: initial;
+}
+
+.widget {
+  --text: #1f2330;
+  --muted: #6b7280;
+  --surface: #ffffff;
+  --border: #e3e5ea;
+  --accent: #2f5bea;
+  --danger: #c2372f;
+
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--text);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/* Bubble */
+
+.bubble {
+  position: fixed;
+  inset-inline-end: 20px;
+  bottom: 20px;
+  z-index: 2147483647;
+  width: 56px;
+  height: 56px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 24px;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 20%);
+}
+
+/* Panel */
+
+.panel {
+  position: fixed;
+  inset-inline-end: 20px;
+  bottom: 88px;
+  z-index: 2147483647;
+  display: flex;
+  flex-direction: column;
+  width: min(360px, calc(100vw - 40px));
+  height: min(540px, calc(100vh - 110px));
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgb(0 0 0 / 18%);
+  overflow: hidden;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.8rem 1rem;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.panel-header .header-button {
+  padding: 0.25rem 0.7rem;
+  border: 1px solid rgb(255 255 255 / 60%);
+  background: transparent;
+  color: #fff;
+  font-size: 0.85rem;
+}
+
+.empty {
+  flex: 1;
+  margin: 0;
+  padding: 1rem;
+  color: var(--muted);
+}
+
+.messages {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 1rem;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.message {
+  max-width: 85%;
+  padding: 0.5rem 0.75rem;
+  border-radius: 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.message.visitor {
+  align-self: flex-end;
+  background: var(--accent);
+  color: #fff;
+}
+
+.message.assistant {
+  align-self: flex-start;
+  background: #eef0f4;
+}
+
+.message.notice {
+  align-self: center;
+  max-width: 100%;
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.message.event {
+  align-self: stretch;
+  max-width: 100%;
+  border: 1px solid #bfe3cd;
+  background: #dff3e7;
+  color: #1f6b3d;
+  font-size: 0.9rem;
+}
+
+.message.not-sent {
+  opacity: 0.6;
+}
+
+.message .hint {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.75rem;
+}
+
+.message.typing {
+  color: var(--muted);
+}
+
+/* Footer and forms */
+
+.footer {
+  padding: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.error {
+  margin: 0 0 0.5rem;
+  color: var(--danger);
+  font-size: 0.85rem;
+}
+
+.message-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+}
+
+.message-form textarea {
+  flex: 1;
+  resize: none;
+}
+
+.stacked-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.stacked-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.intro {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+input,
+textarea {
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+}
+
+button {
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+button.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.small {
+  font-size: 0.8rem;
+}
+
+/* Booking panel */
+
+.booking {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 0 1rem 1rem;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin: 0.75rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  color: var(--muted);
+}
+
+.tab.selected {
+  border-bottom-color: var(--accent);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.booking-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.booking-body label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+select {
+  font: inherit;
+  color: inherit;
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.4rem;
+  font-weight: 600;
+}
+
+.calendar-header button {
+  padding: 0.15rem 0.6rem;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.2rem;
+  text-align: center;
+}
+
+.weekday {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.day {
+  padding: 0.35rem 0;
+}
+
+.day:disabled {
+  border-color: transparent;
+  background: none;
+  opacity: 0.35;
+}
+
+.day.selected,
+.slot.selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.slots {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.3rem;
+}
+
+.slot {
+  padding: 0.35rem 0;
+}
+
+.booking-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f7f8fb;
+}
+
+.booking-summary p {
+  margin: 0;
+}
+
+.reservations {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reservations li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.reservations li > button.link {
+  align-self: flex-start;
+}
+
+.status {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.status.pending {
+  color: #8a6100;
+}
+
+.status.confirmed {
+  color: #1f8a4c;
+}
+
+.status.cancelled,
+.status.completed {
+  color: var(--muted);
+}
+
+.confirm-cancel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+
+button.link {
+  border: none;
+  background: none;
+  color: var(--accent);
+  padding: 0.2rem;
+}
+
+.verify-link {
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+  text-decoration: underline;
+}
+
+/* Right to left (Arabic): the bubble and panel use inset-inline-end and flex
+   alignment, which mirror by themselves; arrows have to be flipped. */
+
+[dir='rtl'] .calendar-header button {
+  transform: scaleX(-1);
+}
+
+/* A person of the business answering in the chat */
+
+.message.employee {
+  align-self: flex-start;
+  border: 1px solid #bfe3cd;
+  background: #eaf7ef;
+}
+
+.message .sender {
+  display: block;
+  margin-bottom: 0.15rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #1f6b3d;
+}
+
+/* New messages while the panel is closed */
+
+.bubble.unread::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  inset-inline-end: 4px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--danger);
+}
