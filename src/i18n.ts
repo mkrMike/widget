@@ -438,11 +438,88 @@ const ar: Strings = {
   backToAssistant: 'أنت تتحدث مع المساعد مرة أخرى.',
 }
 
-const languages = { en, fr, es, ru, ar } satisfies Record<string, Strings>
+// Polite plural (εσείς) towards the visitor.
+const el: Strings = {
+  openChat: 'Άνοιγμα συνομιλίας',
+  closeChat: 'Κλείσιμο συνομιλίας',
+  title: 'Συνομιλήστε μαζί μας',
+  book: 'Κράτηση',
+  backToChat: '← Συνομιλία',
+  greeting: 'Γεια σας! Πώς μπορούμε να σας βοηθήσουμε σήμερα;',
+  notSent: 'Δεν στάλθηκε',
+  messagePlaceholder: 'Γράψτε το μήνυμά σας…',
+  send: 'Αποστολή',
+  verifyMyDetails: 'Επαλήθευση των στοιχείων μου',
+
+  contactIntro:
+    'Αφήστε τα στοιχεία σας για να σας αναγνωρίσουμε. Θα σας στείλουμε κωδικούς για να τα επιβεβαιώσετε.',
+  firstName: 'Όνομα',
+  lastName: 'Επώνυμο',
+  email: 'Email',
+  phone: 'Τηλέφωνο',
+  continue: 'Συνέχεια',
+  backToChatLink: 'Επιστροφή στη συνομιλία',
+  verifyIntro: (channel) =>
+    `Εισαγάγετε τον κωδικό που στείλαμε ${channel === 'EMAIL' ? 'στη διεύθυνση email σας' : 'στο τηλέφωνό σας'}`,
+  code: 'Κωδικός',
+  confirm: 'Επιβεβαίωση',
+  changeMyDetails: 'Αλλαγή των στοιχείων μου',
+  contactLimit:
+    'Για να συνεχίσετε, συμπληρώστε τα στοιχεία σας στην παρακάτω φόρμα. Θα λάβετε κωδικό επαλήθευσης μέσω email και SMS.',
+
+  chatUnavailable: 'Η συνομιλία δεν είναι διαθέσιμη αυτή τη στιγμή. Δοκιμάστε ξανά αργότερα.',
+  tooManyRequestsIn: (seconds) => `Πάρα πολλά αιτήματα. Δοκιμάστε ξανά σε ${seconds} δευτερόλεπτα.`,
+  tooManyRequests: 'Πάρα πολλά αιτήματα. Δοκιμάστε ξανά σε λίγο.',
+  connectionError: 'Δεν ήταν δυνατή η σύνδεση με τη συνομιλία. Ελέγξτε τη σύνδεσή σας και δοκιμάστε ξανά.',
+  chatEnded: 'Αυτή η συνομιλία έληξε. Στείλτε ένα μήνυμα για να ξεκινήσετε νέα.',
+  previousChatEnded: 'Η προηγούμενη συνομιλία έληξε',
+
+  newBooking: 'Νέα κράτηση',
+  myReservations: 'Οι κρατήσεις μου',
+  loading: 'Φόρτωση…',
+  nothingBookable: 'Δεν υπάρχει τίποτα διαθέσιμο για online κράτηση αυτή τη στιγμή.',
+  whatToBook: 'Τι θα θέλατε να κλείσετε;',
+  choose: 'Επιλέξτε…',
+  previousMonth: 'Προηγούμενος μήνας',
+  nextMonth: 'Επόμενος μήνας',
+  noFreeDays: 'Δεν υπάρχουν διαθέσιμες ημέρες αυτόν τον μήνα.',
+  noFreeTimes: (day) => `Δεν υπάρχουν διαθέσιμες ώρες την ${day}.`,
+  requestNote: 'Έτσι στέλνετε ένα αίτημα: η επιχείρηση θα το επιβεβαιώσει.',
+  requestThisTime: 'Αίτημα για αυτή την ώρα',
+  verifyToBook: 'Επαλήθευση στοιχείων για κράτηση',
+  verifyToSeeReservations: 'Επαληθεύστε τα στοιχεία σας για να δείτε τις κρατήσεις σας.',
+  noUpcoming: 'Δεν υπάρχουν επερχόμενες κρατήσεις.',
+  cancelQuestion: 'Ακύρωση αυτής της κράτησης;',
+  yesCancel: 'Ναι, ακύρωση',
+  no: 'Όχι',
+  cancel: 'Ακύρωση',
+  status: {
+    PENDING: 'Αναμένει επιβεβαίωση',
+    CONFIRMED: 'Επιβεβαιωμένη',
+    CANCELLED: 'Ακυρωμένη',
+    COMPLETED: 'Ολοκληρωμένη',
+  },
+
+  separator: ', ',
+  requestSent: (reservation) => `Το αίτημα στάλθηκε: ${reservation} — αναμένει επιβεβαίωση.`,
+  cancelled: (reservation) => `Ακυρώθηκε: ${reservation}.`,
+  afterBookingFallback:
+    'Το αίτημά σας στάλθηκε στην επιχείρηση. Θα ενημερωθείτε μόλις το επιβεβαιώσει. Μπορώ να σας βοηθήσω με κάτι άλλο;',
+
+  employee: 'Υπάλληλος',
+  waitingForEmployee: 'Ένας υπάλληλος θα σας απαντήσει εδώ.',
+  employeeJoined: 'Ένας υπάλληλος συμμετέχει πλέον στη συνομιλία.',
+  backToAssistant: 'Συνομιλείτε ξανά με τον βοηθό.',
+}
+
+const languages = { en, fr, es, ru, ar, el } satisfies Record<string, Strings>
 
 export type Language = keyof typeof languages
 
 const rtlLanguages: Language[] = ['ar']
+
+/** Unicode extensions of a language's locale: Greek times on the 24-hour clock ("17:00"). */
+const localeExtensions: Partial<Record<Language, string>> = { el: '-u-hc-h23' }
 
 let active: { language: Language; locale: string } = { language: 'en', locale: 'en' }
 
@@ -457,7 +534,7 @@ export function setLanguage(requested?: string): void {
     const base = tag?.toLowerCase().split('-')[0]
     if (tag && base && base in languages) {
       const locale = Intl.DateTimeFormat.supportedLocalesOf(tag).length > 0 ? tag : base
-      active = { language: base as Language, locale }
+      active = { language: base as Language, locale: locale + (localeExtensions[base as Language] ?? '') }
       return
     }
   }
