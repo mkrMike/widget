@@ -1,0 +1,54 @@
+# Continuous integration: every push and pull request is linted, type-checked
+# and built. A red result means: do not merge.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# A newer push on the same branch cancels the run still going for the older one.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# The workflow only reads the code.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Lint and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          # Keeps downloaded npm packages between runs (faster installs).
+          cache: npm
+
+      # Exactly the versions in package-lock.json.
+      - name: Install the dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      # tsc (type check), then vite build into dist/widget.js.
+      - name: Type-check and build
+        run: npm run build
+
+      # The file businesses embed, ready to host (deployment comes later).
+      - name: Upload the build
+        uses: actions/upload-artifact@v4
+        with:
+          name: widget-dist
+          path: dist/
+          retention-days: 14
