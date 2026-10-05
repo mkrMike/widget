@@ -4,8 +4,10 @@ import {
   type BookingForm,
   type ChatReply,
   type ContactDetails,
+  type ContactForm,
   type ConversationMode,
   type LiveEventData,
+  type ReservationSummary,
   type Slot,
 } from './api'
 import {
@@ -24,11 +26,17 @@ import {
   monthOf,
   weekdayInitials,
 } from './booking'
+import { detailsChangedError, type ErrorPlace, isolate, knownError, maskEmail, maskPhone } from './contact'
 import { h } from './dom'
 import { direction, language, t } from './i18n'
 import { LiveStream } from './live'
 import { type ChatMessage, emptyChat, loadChat, saveChat, type StoredChat } from './storage'
 import styles from './widget.css?inline'
+
+const contactFields: (keyof ContactDetails)[] = ['firstName', 'lastName', 'email', 'phone']
+
+/** "Resend code" is active this long after a code was sent. */
+const resendDelayMs = 30_000
 
 const senderFrom: Record<string, ChatMessage['from']> = {
   CUSTOMER: 'visitor',
@@ -70,8 +78,27 @@ export class ChatWidget {
   private booking: BookingState = emptyBooking()
   /** Kept across re-renders so a failed request doesn't wipe what was typed. */
   private draft = ''
-  private contact: ContactDetails = { firstName: '', lastName: '', email: '', phone: '' }
   private codeDraft = ''
+  /** The contact and code errors, translated, shown under their field. */
+  private fieldErrors: Partial<Record<ErrorPlace, string>> = {}
+  /** "We sent you a new code." */
+  private info: string | null = null
+  /** No more codes on this channel for now (too many requested). */
+  private resendBlocked = false
+  /** After a 429 on the form, its buttons wait until then (ms; 0: not waiting). */
+  private blockedUntil = 0
+  /** Updates the resend countdown and ends the 429 wait. */
+  private ticker: number | null = null
+  /** A chat message is on its way: the "…" bubble. */
+  private sendingMessage = false
+  /**
+   * The booking summary card above the input (a reservation the assistant
+   * found by its code), and its stage: the summary, the cancel question, or
+   * cancelled. Null: no card. Not stored: after a reload its status could be
+   * stale (the business confirms or cancels); the customer asks again.
+   */
+  private summary: { reservation: ReservationSummary; stage: 'card' | 'confirm' | 'cancelled' } | null = null
+  private summaryError: string | null = null
   /** New messages arrived while the panel was closed: a dot on the bubble. */
   private unread = false
   private live: LiveStream | null = null
@@ -101,6 +128,7 @@ export class ChatWidget {
 
   private async sendMessage(text: string) {
     this.draft = text
+    this.sendingMessage = true
     let bookingForm: BookingForm | null = null
 
     await this.run(async () => {
@@ -122,9 +150,20 @@ export class ChatWidget {
         }
       }
 
+      this.draft = ''
+
+      // No employee can answer: the assistant says to try again later and the
+      // backend closes the conversation (its token is revoked). The reply is
+      // shown, then the chat ends; the next message starts a new one.
+      if (reply.closed) {
+        this.addFromResponse('visitor', text, reply.customerMessageId)
+        this.addAssistantMessage(reply.assistantMessage, reply.assistantMessageId)
+        this.endChat()
+        return
+      }
+
       this.chat.conversationId = reply.conversationId
       this.chat.accessToken = reply.accessToken
-      this.draft = ''
 
       // Null messageId: the anonymous limit is reached and the message was not stored.
       const limitReached = reply.messageId === null
@@ -136,19 +175,26 @@ export class ChatWidget {
       if (reply.mode) {
         this.setMode(reply.mode)
       }
+      // The assistant collected the details in the chat (contactForm), or the
+      // limit is reached: open the form. (contactRequired: an older backend
+      // without contactForm; without either flag, on the limit only.)
+      const contactRequired =
+        (reply.contactForm != null || (reply.contactRequired ?? limitReached)) && !this.chat.verified
+
       // On the limit, our own text in the visitor's language instead of the
       // backend's English one. (A null reply otherwise: an employee will answer.)
-      if (limitReached && reply.contactRequired) {
+      if (limitReached && contactRequired) {
         this.addAssistantMessage(t().contactLimit)
+      } else if (limitReached && this.chat.step === 'verify') {
+        this.addAssistantMessage(t().codeLimit)
       } else {
         this.addAssistantMessage(reply.assistantMessage, reply.assistantMessageId)
       }
 
-      // The assistant asks the visitor to "fill in the form shown in the chat
-      // window": open it. (An older backend without the flag: on the limit only.)
-      const contactRequired = (reply.contactRequired ?? reply.messageId === null) && !this.chat.verified
+      this.showSummary(reply.reservation)
+
       if (contactRequired) {
-        this.chat.step = 'contact'
+        this.showContactForm(reply.contactForm ?? null)
         // Verification first, then the booking panel.
         this.chat.pendingBooking = reply.bookingForm ?? this.chat.pendingBooking
       } else {
@@ -176,43 +222,154 @@ export class ChatWidget {
 
   /** The conversation can't be continued (closed, or its token is no longer valid). */
   private endChat() {
-    // Once, even if both the closed event and a refused request say so.
+    // Once, even if the closed event, a closed reply and a refused request all
+    // say so. (A new conversation keeps no earlier "chat ended" line.)
     const messages = this.chat.messages
-    const alreadyEnded = this.chat.conversationId === null && messages.at(-1)?.text === t().chatEnded
+    const alreadyEnded =
+      this.chat.conversationId === null && messages.some((message) => message.text === t().chatEnded)
     this.chat = {
       ...emptyChat(),
       messages: alreadyEnded ? messages : [...messages, { from: 'notice', text: t().chatEnded }],
     }
     this.view = 'chat'
     this.booking = emptyBooking()
-    this.contact = { firstName: '', lastName: '', email: '', phone: '' }
     this.codeDraft = ''
+    this.fieldErrors = {}
+    this.info = null
+    this.resendBlocked = false
+    this.blockedUntil = 0
+    this.summary = null
+    this.summaryError = null
   }
 
-  private submitContact(details: ContactDetails) {
-    this.contact = details
+  /** A new reservation in a reply replaces the card. */
+  private showSummary(reservation: ReservationSummary | null | undefined) {
+    if (reservation) {
+      this.summary = { reservation, stage: 'card' }
+      this.summaryError = null
+    }
+  }
+
+  private setSummaryStage(stage: 'card' | 'confirm') {
+    if (this.summary) {
+      this.summary.stage = stage
+      this.summaryError = null
+      this.render()
+    }
+  }
+
+  /** "Yes, cancel it": the same summary comes back, CANCELLED. */
+  private cancelSummary() {
+    const summary = this.summary
+    if (!summary) {
+      return
+    }
     return this.run(async () => {
-      const reply = await this.api.contact(...this.session(), details)
-      this.chat.verificationRequired = reply.verificationRequired
-      this.chat.step = reply.verificationRequired.length > 0 ? 'verify' : 'chat'
+      try {
+        const reservation = await this.api.cancelByCode(...this.session(), summary.reservation.code)
+        this.summary = { reservation, stage: 'cancelled' }
+      } catch (error) {
+        // Back to the summary with the reason; others (e.g. 429) above the form.
+        const reason =
+          error instanceof ApiError && error.message === 'This reservation can no longer be cancelled'
+            ? t().summary.notCancellable
+            : error instanceof ApiError && error.message === 'Reservation not found'
+              ? t().summary.notFound
+              : null
+        if (reason === null) {
+          throw error
+        }
+        this.summary = { reservation: { ...summary.reservation, cancellable: false }, stage: 'card' }
+        this.summaryError = reason
+      }
     })
   }
 
+  /**
+   * Pre-filled with what the assistant collected (null values keep what the
+   * visitor typed), read-only when all four are known. During the code step,
+   * the backend only sends contactForm when the visitor corrected a detail in
+   * the chat: the codes are invalid, the visitor confirms again.
+   */
+  private showContactForm(form: ContactForm | null) {
+    if (this.chat.step === 'verify') {
+      if (form === null) {
+        return
+      }
+      this.confirmAgain()
+    }
+    const contact = this.chat.contact
+    for (const name of contactFields) {
+      contact[name] = form?.[name]?.trim() || contact[name]
+    }
+    this.chat.contactLocked = form !== null && contactFields.every((name) => form[name]?.trim())
+    this.chat.step = 'contact'
+  }
+
+  /** The details changed since they were confirmed: back to the read-only form. */
+  private confirmAgain() {
+    this.chat.step = 'contact'
+    this.chat.contactLocked = contactFields.every((name) => this.chat.contact[name].trim())
+    this.chat.verificationRequired = []
+    this.chat.codeSentAt = null
+    this.chat.codeSentTo = null
+    this.codeDraft = ''
+    this.info = t().detailsChanged
+  }
+
+  /** The submitted form is the source of truth: sent as shown or edited. */
+  private submitContact(details: ContactDetails) {
+    this.chat.contact = details
+    return this.run(async () => {
+      try {
+        const reply = await this.api.contact(...this.session(), details)
+        this.chat.verificationRequired = reply.verificationRequired
+        this.chat.step = reply.verificationRequired.length > 0 ? 'verify' : 'chat'
+        this.codeSent(reply.codeSentTo)
+      } catch (error) {
+        if (!this.showFormError(error, 'form')) {
+          throw error
+        }
+      }
+    })
+  }
+
+  /** The email code first; the SMS is only sent once it is right. */
   private async submitCode(code: string) {
     const channel = this.chat.verificationRequired[0]
     let bookingForm: BookingForm | null = null
 
     await this.run(async () => {
-      const reply = await this.api.verify(...this.session(), channel, code)
-      this.chat.verificationRequired = reply.verificationRequired
+      let reply
+      try {
+        reply = await this.api.verify(...this.session(), channel, code)
+      } catch (error) {
+        if (this.showFormError(error, 'code')) {
+          return
+        }
+        throw error
+      }
       this.codeDraft = ''
 
-      if (reply.verificationRequired.length === 0) {
+      // E.g. verified to talk to an employee, and none can answer: the reply,
+      // then the chat ends (see sendMessage).
+      if (reply.closed) {
+        this.addAssistantMessage(reply.assistantMessage, reply.assistantMessageId)
+        this.endChat()
+        return
+      }
+
+      this.chat.verificationRequired = reply.verificationRequired
+      if (reply.verificationRequired.length > 0) {
+        // The next channel's code was just sent.
+        this.codeSent(reply.codeSentTo)
+      } else {
         // The old token is revoked: from now on only the new one works.
         this.chat.accessToken = reply.accessToken ?? this.chat.accessToken
         this.chat.verified = true
         this.chat.step = 'chat'
         this.addAssistantMessage(reply.assistantMessage, reply.assistantMessageId)
+        this.showSummary(reply.reservation)
         // Usually the assistant reopens the panel for the booking in progress.
         bookingForm = reply.bookingForm ?? this.chat.pendingBooking
         this.chat.pendingBooking = null
@@ -222,6 +379,108 @@ export class ChatWidget {
     if (bookingForm) {
       this.openBooking(bookingForm)
     }
+  }
+
+  private resendCode() {
+    const channel = this.chat.verificationRequired[0]
+    return this.run(async () => {
+      try {
+        await this.api.resend(...this.session(), channel)
+        // Same destination: the resend answers 204 without it.
+        this.codeSent(this.chat.codeSentTo)
+        this.info = t().codeResent
+      } catch (error) {
+        if (!this.showFormError(error, 'code')) {
+          throw error
+        }
+      }
+    })
+  }
+
+  /** A new code is on its way: the resend countdown starts again. */
+  private codeSent(sentTo: string | null | undefined) {
+    this.chat.codeSentAt = Date.now()
+    this.chat.codeSentTo = sentTo ?? null
+    this.codeDraft = ''
+    this.resendBlocked = false
+  }
+
+  /**
+   * The contact and code errors under their field, translated. Returns false
+   * for the others (shown above the form as before).
+   */
+  private showFormError(error: unknown, place: 'form' | 'code'): boolean {
+    if (!(error instanceof ApiError)) {
+      return false
+    }
+    // Too many attempts from this browser: the buttons wait for Retry-After.
+    if (error.status === 429) {
+      this.blockedUntil = error.retryAfterSeconds ? Date.now() + error.retryAfterSeconds * 1000 : 0
+      this.fieldErrors[place] = t().formErrors.waitFewMinutes
+      return true
+    }
+    if (error.status !== 400) {
+      return false
+    }
+    if (error.message === detailsChangedError) {
+      this.confirmAgain()
+      return true
+    }
+    const known = knownError(error.message)
+    if (!known) {
+      return false
+    }
+    const [key, field, sent] = known
+    if (key === 'tooManyCodes') {
+      this.resendBlocked = true
+    }
+    // In the contact step, a code error (too many codes) goes above the buttons.
+    this.fieldErrors[place === 'code' ? 'code' : field === 'code' ? 'form' : field] =
+      key ? t().formErrors[key] : sent
+    return true
+  }
+
+  private resendWaitSeconds(): number {
+    const sentAt = this.chat.codeSentAt
+    return sentAt === null ? 0 : Math.max(0, Math.ceil((sentAt + resendDelayMs - Date.now()) / 1000))
+  }
+
+  private blocked(): boolean {
+    return this.blockedUntil > Date.now()
+  }
+
+  private resendButton(): Pick<HTMLButtonElement, 'textContent' | 'disabled'> {
+    const wait = this.resendWaitSeconds()
+    return {
+      textContent: wait > 0 ? `${t().resendCode} (0:${String(wait).padStart(2, '0')})` : t().resendCode,
+      disabled: this.busy || wait > 0 || this.resendBlocked || this.blocked(),
+    }
+  }
+
+  /** Ticks every second while the form shows a countdown or waits after a 429. */
+  private keepTicking() {
+    const waiting =
+      this.open && this.view === 'chat' && this.chat.step !== 'chat' && (this.resendWaitSeconds() > 0 || this.blocked())
+    if (waiting && this.ticker === null) {
+      this.ticker = window.setInterval(() => this.tick(), 1000)
+    } else if (!waiting && this.ticker !== null) {
+      window.clearInterval(this.ticker)
+      this.ticker = null
+    }
+  }
+
+  private tick() {
+    if (this.blockedUntil !== 0 && !this.blocked()) {
+      this.blockedUntil = 0
+      this.render()
+      return
+    }
+    // Only the link changes: no re-render while the visitor types the code.
+    const resend = this.root.querySelector<HTMLButtonElement>('button.resend')
+    if (resend) {
+      Object.assign(resend, this.resendButton())
+    }
+    this.keepTicking()
   }
 
   // Booking panel
@@ -332,29 +591,6 @@ export class ChatWidget {
     })
   }
 
-  private showReservations() {
-    this.booking.tab = 'mine'
-    this.error = null
-    if (!this.chat.verified) {
-      this.render()
-      return
-    }
-    void this.run(async () => {
-      this.booking.reservations = await this.api.reservations(...this.session())
-    })
-  }
-
-  private cancelReservation(reservationId: number) {
-    return this.run(async () => {
-      const cancelled = await this.api.cancel(...this.session(), reservationId)
-      this.booking.cancelling = null
-      // The tab only lists upcoming reservations that can still be cancelled.
-      this.booking.reservations =
-        this.booking.reservations?.filter((reservation) => reservation.id !== cancelled.id) ?? null
-      this.chat.messages.push({ from: 'event', text: t().cancelled(describeReservation(cancelled)) })
-    })
-  }
-
   /** Verification first; the panel reopens on the same resource and day afterwards. */
   private askToVerify(pending: BookingForm) {
     this.chat.pendingBooking = pending
@@ -368,6 +604,9 @@ export class ChatWidget {
   private async run(request: () => Promise<void>) {
     this.busy = true
     this.error = null
+    this.fieldErrors = {}
+    this.info = null
+    this.summaryError = null
     this.render()
 
     try {
@@ -376,6 +615,7 @@ export class ChatWidget {
       this.handleError(error)
     } finally {
       this.busy = false
+      this.sendingMessage = false
       this.commit()
     }
   }
@@ -386,7 +626,7 @@ export class ChatWidget {
       return
     }
 
-    // Booking or listing reservations while anonymous.
+    // Booking while anonymous.
     if (error instanceof ApiError && error.status === 403) {
       this.askToVerify({ resourceId: this.booking.resourceId, date: this.booking.date })
       this.error = error.message
@@ -405,6 +645,12 @@ export class ChatWidget {
       this.error = error.retryAfterSeconds
         ? t().tooManyRequestsIn(error.retryAfterSeconds)
         : t().tooManyRequests
+      return
+    }
+
+    // E.g. the assistant timed out: the message stays in the box to send again.
+    if (error instanceof ApiError && error.status >= 500) {
+      this.error = t().serverError
       return
     }
 
@@ -561,9 +807,13 @@ export class ChatWidget {
     this.render()
   }
 
+  /** The contact form opened by the visitor ("Verify my details", "Change my details") is editable. */
   private goToStep(step: 'chat' | 'contact') {
     this.chat.step = step
+    this.chat.contactLocked = false
     this.error = null
+    this.fieldErrors = {}
+    this.info = null
     saveChat(this.widgetKey, this.chat)
     this.render()
   }
@@ -581,6 +831,7 @@ export class ChatWidget {
   // Rendering
 
   private render() {
+    this.keepTicking()
     // Live events re-render while the visitor types: keep the focus and caret.
     const active = this.root.activeElement
     const typing =
@@ -660,7 +911,7 @@ export class ChatWidget {
           message.notSent ? h('span', { className: 'hint', textContent: t().notSent }) : null,
         ),
       ),
-      this.busy && this.chat.step === 'chat'
+      this.sendingMessage
         ? h('li', { className: 'message assistant typing', textContent: '…' })
         : null,
     )
@@ -672,7 +923,15 @@ export class ChatWidget {
       this.chat.messages.length === 0
         ? h('p', { className: 'empty', textContent: t().greeting })
         : messages,
-      h('div', { className: 'footer' }, errorLine, this.renderStep()),
+      // While the contact or code form is open, the visitor can still chat.
+      h(
+        'div',
+        { className: 'footer' },
+        errorLine,
+        this.renderStepForm(),
+        this.renderSummary(),
+        this.renderMessageForm(),
+      ),
     )
 
     this.container.append(panel)
@@ -688,19 +947,98 @@ export class ChatWidget {
         // Email inputs don't support selection ranges.
       }
     } else {
-      panel.querySelector<HTMLElement>('.footer input, .footer textarea')?.focus()
+      panel.querySelector<HTMLElement>('.footer input:not([readonly]), .footer textarea')?.focus()
     }
   }
 
-  private renderStep(): HTMLElement {
+  private renderStepForm(): HTMLElement | null {
     switch (this.chat.step) {
       case 'contact':
         return this.renderContactForm()
       case 'verify':
         return this.renderVerifyForm()
       default:
-        return this.renderMessageForm()
+        return null
     }
+  }
+
+  /** Resource, day and times (the business's wall clock), status and code. */
+  private renderSummary(): HTMLElement | null {
+    if (!this.summary) {
+      return null
+    }
+    const { reservation, stage } = this.summary
+    const texts = t().summary
+
+    const buttons =
+      stage === 'confirm'
+        ? h(
+            'div',
+            { className: 'confirm-cancel' },
+            texts.cancelQuestion,
+            h('button', {
+              type: 'button',
+              className: 'danger',
+              textContent: texts.yesCancel,
+              disabled: this.busy,
+              onclick: () => void this.cancelSummary(),
+            }),
+            h('button', {
+              type: 'button',
+              textContent: t().no,
+              disabled: this.busy,
+              onclick: () => this.setSummaryStage('card'),
+            }),
+          )
+        : h(
+            'div',
+            { className: 'form-buttons' },
+            h('button', {
+              type: 'button',
+              className: 'primary',
+              textContent: texts.ok,
+              disabled: this.busy,
+              onclick: () => {
+                this.summary = null
+                this.summaryError = null
+                this.render()
+              },
+            }),
+            stage === 'card' && reservation.cancellable
+              ? h('button', {
+                  type: 'button',
+                  textContent: t().cancel,
+                  disabled: this.busy,
+                  onclick: () => this.setSummaryStage('confirm'),
+                })
+              : null,
+          )
+
+    return h(
+      'section',
+      { className: 'summary', ariaLabel: texts.title },
+      h('strong', { textContent: texts.title }),
+      h('span', { textContent: reservation.resourceName }),
+      h('span', { textContent: formatSlot(reservation) }),
+      h('span', {
+        className: `status ${reservation.status.toLowerCase()}`,
+        textContent: texts.status[reservation.status],
+      }),
+      h(
+        'span',
+        { className: 'small' },
+        h('span', { className: 'muted', textContent: `${texts.code} ` }),
+        h('bdi', { className: 'code', textContent: reservation.code }),
+      ),
+      stage === 'cancelled' ? h('p', { className: 'info', role: 'status', textContent: texts.cancelled }) : null,
+      this.summaryError ? h('p', { className: 'field-error', role: 'alert', textContent: this.summaryError }) : null,
+      buttons,
+    )
+  }
+
+  private fieldError(place: ErrorPlace): HTMLElement | null {
+    const text = this.fieldErrors[place]
+    return text ? h('p', { className: 'field-error', role: 'alert', textContent: text }) : null
   }
 
   private renderMessageForm() {
@@ -742,7 +1080,7 @@ export class ChatWidget {
     // Anonymous visitors can identify themselves at any time, e.g. to book; the
     // form also opens by itself when the backend asks for it (contactRequired).
     // Hidden before the first reply, since there is no conversation yet.
-    const canVerify = this.chat.conversationId !== null && !this.chat.verified
+    const canVerify = this.chat.conversationId !== null && !this.chat.verified && this.chat.step === 'chat'
 
     return h(
       'div',
@@ -761,6 +1099,8 @@ export class ChatWidget {
   }
 
   private renderContactForm() {
+    const contact = this.chat.contact
+    const locked = this.chat.contactLocked
     const field = (name: keyof ContactDetails, label: string, type: string, autocomplete: AutoFill) =>
       h(
         'label',
@@ -771,13 +1111,35 @@ export class ChatWidget {
           type,
           autocomplete,
           required: true,
-          value: this.contact[name],
+          value: contact[name],
+          readOnly: locked,
+          ariaInvalid: this.fieldErrors[name] ? 'true' : 'false',
           disabled: this.busy,
           oninput: (event: Event) => {
-            this.contact[name] = (event.target as HTMLInputElement).value
+            contact[name] = (event.target as HTMLInputElement).value
           },
         }),
+        this.fieldError(name),
       )
+
+    const disabled = this.busy || this.blocked()
+    // Pre-filled by the assistant: Confirm as shown, or Edit (then Send).
+    const buttons = locked
+      ? h(
+          'div',
+          { className: 'form-buttons' },
+          h('button', { type: 'submit', className: 'primary', textContent: t().confirm, disabled }),
+          h('button', {
+            type: 'button',
+            textContent: t().edit,
+            disabled: this.busy,
+            onclick: () => {
+              this.chat.contactLocked = false
+              this.commit()
+            },
+          }),
+        )
+      : h('button', { type: 'submit', className: 'primary', textContent: t().send, disabled })
 
     return h(
       'form',
@@ -797,13 +1159,16 @@ export class ChatWidget {
       },
       h('p', {
         className: 'intro',
-        textContent: t().contactIntro,
+        textContent: locked ? t().contactCheckIntro : t().contactIntro,
       }),
       field('firstName', t().firstName, 'text', 'given-name'),
       field('lastName', t().lastName, 'text', 'family-name'),
       field('email', t().email, 'email', 'email'),
       field('phone', t().phone, 'tel', 'tel'),
-      h('button', { type: 'submit', className: 'primary', textContent: t().continue, disabled: this.busy }),
+      // "Your details have changed. Please confirm them."
+      this.info ? h('p', { className: 'info', role: 'status', textContent: this.info }) : null,
+      this.fieldError('form'),
+      buttons,
       // After the message limit, sending again just brings the form back.
       h('button', {
         type: 'button',
@@ -817,7 +1182,13 @@ export class ChatWidget {
 
   private renderVerifyForm() {
     const channel = this.chat.verificationRequired[0]
-    const sentTo = channel === 'EMAIL' ? this.contact.email : this.contact.phone
+    const { email, phone } = this.chat.contact
+    // Masked by the backend; our own mask for an older one.
+    const sentTo = this.chat.codeSentTo
+      ? isolate(this.chat.codeSentTo)
+      : channel === 'EMAIL'
+        ? maskEmail(email)
+        : maskPhone(phone)
 
     return h(
       'form',
@@ -834,7 +1205,7 @@ export class ChatWidget {
       },
       h('p', {
         className: 'intro',
-        textContent: `${t().verifyIntro(channel)}${sentTo ? ` (${sentTo})` : ''}.`,
+        textContent: channel === 'EMAIL' ? t().codeSentToEmail(sentTo) : t().codeSentBySms(sentTo),
       }),
       h(
         'label',
@@ -850,46 +1221,38 @@ export class ChatWidget {
           autocomplete: 'one-time-code',
           maxLength: 12,
           required: true,
+          ariaInvalid: this.fieldErrors.code ? 'true' : 'false',
           disabled: this.busy,
         }),
+        this.fieldError('code'),
       ),
-      h('button', { type: 'submit', className: 'primary', textContent: t().confirm, disabled: this.busy }),
+      this.info ? h('p', { className: 'info', role: 'status', textContent: this.info }) : null,
+      h('button', {
+        type: 'submit',
+        className: 'primary',
+        textContent: t().confirm,
+        disabled: this.busy || this.blocked(),
+      }),
+      // Updated every second by tick().
+      h('button', {
+        type: 'button',
+        className: 'link resend',
+        ...this.resendButton(),
+        onclick: () => void this.resendCode(),
+      }),
       h('button', {
         type: 'button',
         className: 'link',
         textContent: t().changeMyDetails,
         disabled: this.busy,
-        // Submitting the details again sends new codes.
+        // Submitting the details again starts over with a new email code.
         onclick: () => this.goToStep('contact'),
       }),
     )
   }
 
   private renderBooking(): HTMLElement {
-    const tab = (id: BookingState['tab'], label: string, onclick: () => void) =>
-      h('button', {
-        type: 'button',
-        className: `tab${this.booking.tab === id ? ' selected' : ''}`,
-        textContent: label,
-        disabled: this.busy,
-        onclick,
-      })
-
-    return h(
-      'div',
-      { className: 'booking' },
-      h(
-        'div',
-        { className: 'tabs', role: 'tablist' },
-        tab('book', t().newBooking, () => {
-          this.booking.tab = 'book'
-          this.error = null
-          this.render()
-        }),
-        tab('mine', t().myReservations, () => this.showReservations()),
-      ),
-      this.booking.tab === 'book' ? this.renderNewBooking() : this.renderMyReservations(),
-    )
+    return h('div', { className: 'booking' }, this.renderNewBooking())
   }
 
   private renderNewBooking(): HTMLElement {
@@ -1016,80 +1379,6 @@ export class ChatWidget {
     return h('div', { className: 'booking-body' }, resourceSelect, calendar, slotList, summary)
   }
 
-  private renderMyReservations(): HTMLElement {
-    if (!this.chat.verified) {
-      return h(
-        'div',
-        { className: 'booking-body' },
-        h('p', { textContent: t().verifyToSeeReservations }),
-        h('button', {
-          type: 'button',
-          className: 'primary',
-          textContent: t().verifyMyDetails,
-          onclick: () => this.askToVerify({ resourceId: null, date: null }),
-        }),
-      )
-    }
-
-    const { reservations, cancelling } = this.booking
-    if (reservations === null) {
-      return h('p', { className: 'muted', textContent: this.busy ? t().loading : '' })
-    }
-    if (reservations.length === 0) {
-      return h('p', { className: 'muted', textContent: t().noUpcoming })
-    }
-
-    return h(
-      'ul',
-      { className: 'reservations' },
-      ...reservations.map((reservation) =>
-        h(
-          'li',
-          {},
-          h('span', { textContent: describeReservation(reservation) }),
-          h('span', {
-            className: `status ${reservation.status.toLowerCase()}`,
-            textContent: t().status[reservation.status],
-          }),
-          !reservation.cancellable
-            ? null
-            : cancelling === reservation.id
-              ? h(
-                  'div',
-                  { className: 'confirm-cancel' },
-                  t().cancelQuestion,
-                  h('button', {
-                    type: 'button',
-                    className: 'danger',
-                    textContent: t().yesCancel,
-                    disabled: this.busy,
-                    onclick: () => void this.cancelReservation(reservation.id),
-                  }),
-                  h('button', {
-                    type: 'button',
-                    textContent: t().no,
-                    disabled: this.busy,
-                    onclick: () => {
-                      this.booking.cancelling = null
-                      this.render()
-                    },
-                  }),
-                )
-              : h('button', {
-                  type: 'button',
-                  className: 'link',
-                  textContent: t().cancel,
-                  disabled: this.busy,
-                  onclick: () => {
-                    this.booking.cancelling = reservation.id
-                    this.error = null
-                    this.render()
-                  },
-                }),
-        ),
-      ),
-    )
-  }
 }
 
 export const hostId = 'samatrica-chat-widget'

@@ -1,4 +1,19 @@
-import type { Channel, ReservationStatus } from './api'
+import type { ReservationStatus } from './api'
+
+export type FormError =
+  | 'firstNameRequired'
+  | 'lastNameRequired'
+  | 'emailRequired'
+  | 'phoneRequired'
+  | 'invalidEmail'
+  | 'invalidPhone'
+  | 'invalidCode'
+  | 'codeExpired'
+  | 'tooManyAttempts'
+  | 'tooManyCodes'
+  | 'noActiveChallenge'
+  /** A 429 from this browser. */
+  | 'waitFewMinutes'
 
 // Every text the widget writes itself, per language. Server messages (the
 // assistant's replies, 4xx error messages) are shown as the backend sends them.
@@ -17,31 +32,45 @@ export interface Strings {
   send: string
   verifyMyDetails: string
 
+  /** Above the editable contact form. */
   contactIntro: string
+  /** Above the contact form pre-filled by the assistant, read-only until "Edit". */
+  contactCheckIntro: string
   firstName: string
   lastName: string
   email: string
   phone: string
-  continue: string
+  edit: string
   backToChatLink: string
-  /** "Enter the code we sent to your email address" (where it was sent is appended in brackets). */
-  verifyIntro: (channel: Channel) => string
+  /** The masked email address, e.g. "j***@example.com". */
+  codeSentToEmail: (to: string) => string
+  /** The masked phone number, e.g. "+971 ••• ••67". */
+  codeSentBySms: (to: string) => string
   code: string
   confirm: string
+  /** Followed by a countdown "(0:25)" until it can be used. */
+  resendCode: string
+  codeResent: string
+  /** The details were corrected in the chat: the code step closes, the form asks to confirm again. */
+  detailsChanged: string
   changeMyDetails: string
+  /** The backend's contact and verification errors, shown under the field. */
+  formErrors: Record<FormError, string>
   /** Replaces the assistant's reply when the anonymous message limit is reached. */
   contactLimit: string
+  /** The same, while the code form is open. */
+  codeLimit: string
 
   chatUnavailable: string
   tooManyRequestsIn: (seconds: number) => string
   tooManyRequests: string
   connectionError: string
+  /** A 5xx, e.g. the assistant timed out. */
+  serverError: string
   chatEnded: string
   /** The one line kept from the previous conversation when a new one starts. */
   previousChatEnded: string
 
-  newBooking: string
-  myReservations: string
   loading: string
   nothingBookable: string
   whatToBook: string
@@ -53,18 +82,26 @@ export interface Strings {
   requestNote: string
   requestThisTime: string
   verifyToBook: string
-  verifyToSeeReservations: string
-  noUpcoming: string
-  cancelQuestion: string
-  yesCancel: string
   no: string
   cancel: string
-  status: Record<ReservationStatus, string>
+
+  /** The summary card of one reservation, found by its code by the assistant. */
+  summary: {
+    title: string
+    status: Record<ReservationStatus, string>
+    /** The label of the booking code, e.g. "K7QM-2X9P". */
+    code: string
+    ok: string
+    cancelQuestion: string
+    yesCancel: string
+    cancelled: string
+    notCancellable: string
+    notFound: string
+  }
 
   /** Separates the resource from the date in "Dr Lina, Fri 2 Oct 09:00–09:30". */
   separator: string
   requestSent: (reservation: string) => string
-  cancelled: (reservation: string) => string
   /** After a booking, when the assistant couldn't answer. */
   afterBookingFallback: string
 
@@ -87,30 +124,48 @@ const en: Strings = {
   send: 'Send',
   verifyMyDetails: 'Verify my details',
 
-  contactIntro: 'Leave your details so we can identify you. We will send you codes to confirm them.',
+  contactIntro: 'Leave your details so we can identify you. We will send you a code by email, then one by SMS.',
+  contactCheckIntro: 'Please check your details. We will send you a code by email, then one by SMS.',
   firstName: 'First name',
   lastName: 'Last name',
   email: 'Email',
   phone: 'Phone',
-  continue: 'Continue',
+  edit: 'Edit',
   backToChatLink: 'Back to chat',
-  verifyIntro: (channel) =>
-    `Enter the code we sent to your ${channel === 'EMAIL' ? 'email address' : 'phone'}`,
+  codeSentToEmail: (to) => `Enter the code we sent to ${to}`,
+  codeSentBySms: (to) => `Enter the code we sent by SMS to ${to}`,
   code: 'Code',
   confirm: 'Confirm',
+  resendCode: 'Resend code',
+  codeResent: 'We sent you a new code.',
+  detailsChanged: 'Your details have changed. Please confirm them.',
   changeMyDetails: 'Change my details',
+  formErrors: {
+    firstNameRequired: 'Please enter your first name.',
+    lastNameRequired: 'Please enter your last name.',
+    emailRequired: 'Please enter your email address.',
+    phoneRequired: 'Please enter your phone number.',
+    invalidEmail: 'This email address is not valid.',
+    invalidPhone: 'This phone number is not valid.',
+    invalidCode: 'This code is not correct.',
+    codeExpired: 'This code has expired. Use “Resend code” to get a new one.',
+    tooManyAttempts: 'Too many wrong codes. Use “Resend code” to get a new one.',
+    tooManyCodes: 'Too many codes were requested. Please try again later.',
+    noActiveChallenge: 'No code is waiting. Use “Resend code” to get a new one.',
+    waitFewMinutes: 'Too many attempts. Please wait a few minutes.',
+  },
   contactLimit:
-    'To continue, please fill in your details in the form below. You will receive a verification code by email and by SMS.',
+    'To continue, please fill in your details in the form below. You will receive a verification code by email, then by SMS.',
+  codeLimit: 'To continue, please enter the verification code we sent you in the form below.',
 
   chatUnavailable: 'Chat is currently unavailable. Please try again later.',
   tooManyRequestsIn: (seconds) => `Too many requests. Please try again in ${seconds} seconds.`,
   tooManyRequests: 'Too many requests. Please try again in a moment.',
   connectionError: 'Could not reach the chat. Please check your connection and try again.',
+  serverError: 'Something went wrong on our side. Please try again.',
   chatEnded: 'This chat has ended. Send a message to start a new one.',
   previousChatEnded: 'Previous conversation ended',
 
-  newBooking: 'New booking',
-  myReservations: 'My reservations',
   loading: 'Loading…',
   nothingBookable: 'Nothing can be booked online at the moment.',
   whatToBook: 'What would you like to book?',
@@ -122,22 +177,28 @@ const en: Strings = {
   requestNote: 'This sends a request: the business will confirm it.',
   requestThisTime: 'Request this time',
   verifyToBook: 'Verify my details to book',
-  verifyToSeeReservations: 'Verify your details to see your reservations.',
-  noUpcoming: 'No upcoming reservations.',
-  cancelQuestion: 'Cancel this reservation?',
-  yesCancel: 'Yes, cancel',
   no: 'No',
   cancel: 'Cancel',
-  status: {
-    PENDING: 'Awaiting confirmation',
-    CONFIRMED: 'Confirmed',
-    CANCELLED: 'Cancelled',
-    COMPLETED: 'Completed',
+
+  summary: {
+    title: 'Your reservation',
+    status: {
+      PENDING: 'Waiting for the business to confirm',
+      CONFIRMED: 'Confirmed',
+      CANCELLED: 'Cancelled',
+      COMPLETED: 'Completed',
+    },
+    code: 'Booking code',
+    ok: 'OK',
+    cancelQuestion: 'Do you really want to cancel your reservation?',
+    yesCancel: 'Yes, cancel it',
+    cancelled: 'Your reservation was cancelled.',
+    notCancellable: 'This reservation can no longer be cancelled.',
+    notFound: 'Reservation not found.',
   },
 
   separator: ', ',
   requestSent: (reservation) => `Request sent: ${reservation} — awaiting confirmation.`,
-  cancelled: (reservation) => `Cancelled: ${reservation}.`,
   afterBookingFallback:
     'Your request has been sent to the business. You will be notified once they confirm it. Is there anything else I can help you with?',
 
@@ -160,30 +221,48 @@ const fr: Strings = {
   verifyMyDetails: 'Vérifier mes coordonnées',
 
   contactIntro:
-    'Indiquez vos coordonnées pour que nous puissions vous identifier. Nous vous enverrons des codes pour les confirmer.',
+    'Indiquez vos coordonnées pour que nous puissions vous identifier. Nous vous enverrons un code par e-mail, puis un autre par SMS.',
+  contactCheckIntro: 'Vérifiez vos coordonnées. Nous vous enverrons un code par e-mail, puis un autre par SMS.',
   firstName: 'Prénom',
   lastName: 'Nom',
   email: 'E-mail',
   phone: 'Téléphone',
-  continue: 'Continuer',
+  edit: 'Modifier',
   backToChatLink: 'Retour au chat',
-  verifyIntro: (channel) =>
-    `Saisissez le code envoyé ${channel === 'EMAIL' ? 'à votre adresse e-mail' : 'sur votre téléphone'}`,
+  codeSentToEmail: (to) => `Saisissez le code envoyé à ${to}`,
+  codeSentBySms: (to) => `Saisissez le code envoyé par SMS au ${to}`,
   code: 'Code',
   confirm: 'Confirmer',
+  resendCode: 'Renvoyer le code',
+  codeResent: 'Nous vous avons envoyé un nouveau code.',
+  detailsChanged: 'Vos coordonnées ont changé. Veuillez les confirmer.',
   changeMyDetails: 'Modifier mes coordonnées',
+  formErrors: {
+    firstNameRequired: 'Veuillez saisir votre prénom.',
+    lastNameRequired: 'Veuillez saisir votre nom.',
+    emailRequired: 'Veuillez saisir votre adresse e-mail.',
+    phoneRequired: 'Veuillez saisir votre numéro de téléphone.',
+    invalidEmail: 'Cette adresse e-mail n’est pas valide.',
+    invalidPhone: 'Ce numéro de téléphone n’est pas valide.',
+    invalidCode: 'Ce code est incorrect.',
+    codeExpired: 'Ce code a expiré. Utilisez « Renvoyer le code » pour en recevoir un nouveau.',
+    tooManyAttempts: 'Trop de codes incorrects. Utilisez « Renvoyer le code » pour en recevoir un nouveau.',
+    tooManyCodes: 'Trop de codes ont été demandés. Veuillez réessayer plus tard.',
+    noActiveChallenge: 'Aucun code n’est en attente. Utilisez « Renvoyer le code » pour en recevoir un nouveau.',
+    waitFewMinutes: 'Trop de tentatives. Veuillez patienter quelques minutes.',
+  },
   contactLimit:
-    'Pour continuer, veuillez remplir vos coordonnées dans le formulaire ci-dessous. Vous recevrez un code de vérification par e-mail et par SMS.',
+    'Pour continuer, veuillez remplir vos coordonnées dans le formulaire ci-dessous. Vous recevrez un code de vérification par e-mail, puis par SMS.',
+  codeLimit: 'Pour continuer, veuillez saisir dans le formulaire ci-dessous le code de vérification que nous vous avons envoyé.',
 
   chatUnavailable: 'Le chat est momentanément indisponible. Veuillez réessayer plus tard.',
   tooManyRequestsIn: (seconds) => `Trop de demandes. Veuillez réessayer dans ${seconds} secondes.`,
   tooManyRequests: 'Trop de demandes. Veuillez réessayer dans un instant.',
   connectionError: 'Impossible de joindre le chat. Vérifiez votre connexion et réessayez.',
+  serverError: 'Un problème est survenu de notre côté. Veuillez réessayer.',
   chatEnded: 'Cette conversation est terminée. Envoyez un message pour en commencer une nouvelle.',
   previousChatEnded: 'Conversation précédente terminée',
 
-  newBooking: 'Nouvelle réservation',
-  myReservations: 'Mes réservations',
   loading: 'Chargement…',
   nothingBookable: 'Rien ne peut être réservé en ligne pour le moment.',
   whatToBook: 'Que souhaitez-vous réserver ?',
@@ -195,22 +274,28 @@ const fr: Strings = {
   requestNote: 'Ceci envoie une demande : l’établissement la confirmera.',
   requestThisTime: 'Demander ce créneau',
   verifyToBook: 'Vérifier mes coordonnées pour réserver',
-  verifyToSeeReservations: 'Vérifiez vos coordonnées pour voir vos réservations.',
-  noUpcoming: 'Aucune réservation à venir.',
-  cancelQuestion: 'Annuler cette réservation ?',
-  yesCancel: 'Oui, annuler',
   no: 'Non',
   cancel: 'Annuler',
-  status: {
-    PENDING: 'En attente de confirmation',
-    CONFIRMED: 'Confirmée',
-    CANCELLED: 'Annulée',
-    COMPLETED: 'Terminée',
+
+  summary: {
+    title: 'Votre réservation',
+    status: {
+      PENDING: 'En attente de confirmation par l’établissement',
+      CONFIRMED: 'Confirmée',
+      CANCELLED: 'Annulée',
+      COMPLETED: 'Terminée',
+    },
+    code: 'Code de réservation',
+    ok: 'OK',
+    cancelQuestion: 'Voulez-vous vraiment annuler votre réservation ?',
+    yesCancel: 'Oui, l’annuler',
+    cancelled: 'Votre réservation a été annulée.',
+    notCancellable: 'Cette réservation ne peut plus être annulée.',
+    notFound: 'Réservation introuvable.',
   },
 
   separator: ', ',
   requestSent: (reservation) => `Demande envoyée : ${reservation} — en attente de confirmation.`,
-  cancelled: (reservation) => `Annulée : ${reservation}.`,
   afterBookingFallback:
     'Votre demande a été envoyée à l’établissement. Vous serez averti dès qu’elle sera confirmée. Puis-je vous aider pour autre chose ?',
 
@@ -232,30 +317,49 @@ const es: Strings = {
   send: 'Enviar',
   verifyMyDetails: 'Verificar mis datos',
 
-  contactIntro: 'Déjanos tus datos para que podamos identificarte. Te enviaremos códigos para confirmarlos.',
+  contactIntro:
+    'Déjanos tus datos para que podamos identificarte. Te enviaremos un código por correo electrónico y después otro por SMS.',
+  contactCheckIntro: 'Comprueba tus datos. Te enviaremos un código por correo electrónico y después otro por SMS.',
   firstName: 'Nombre',
   lastName: 'Apellidos',
   email: 'Correo electrónico',
   phone: 'Teléfono',
-  continue: 'Continuar',
+  edit: 'Editar',
   backToChatLink: 'Volver al chat',
-  verifyIntro: (channel) =>
-    `Introduce el código que enviamos a tu ${channel === 'EMAIL' ? 'correo electrónico' : 'teléfono'}`,
+  codeSentToEmail: (to) => `Introduce el código que enviamos a ${to}`,
+  codeSentBySms: (to) => `Introduce el código que enviamos por SMS al ${to}`,
   code: 'Código',
   confirm: 'Confirmar',
+  resendCode: 'Reenviar código',
+  codeResent: 'Te hemos enviado un nuevo código.',
+  detailsChanged: 'Tus datos han cambiado. Confírmalos, por favor.',
   changeMyDetails: 'Cambiar mis datos',
+  formErrors: {
+    firstNameRequired: 'Introduce tu nombre.',
+    lastNameRequired: 'Introduce tus apellidos.',
+    emailRequired: 'Introduce tu correo electrónico.',
+    phoneRequired: 'Introduce tu número de teléfono.',
+    invalidEmail: 'Este correo electrónico no es válido.',
+    invalidPhone: 'Este número de teléfono no es válido.',
+    invalidCode: 'El código no es correcto.',
+    codeExpired: 'Este código ha caducado. Usa «Reenviar código» para recibir uno nuevo.',
+    tooManyAttempts: 'Demasiados códigos incorrectos. Usa «Reenviar código» para recibir uno nuevo.',
+    tooManyCodes: 'Se han solicitado demasiados códigos. Inténtalo de nuevo más tarde.',
+    noActiveChallenge: 'No hay ningún código pendiente. Usa «Reenviar código» para recibir uno nuevo.',
+    waitFewMinutes: 'Demasiados intentos. Espera unos minutos.',
+  },
   contactLimit:
-    'Para continuar, completa tus datos en el formulario de abajo. Recibirás un código de verificación por correo electrónico y por SMS.',
+    'Para continuar, completa tus datos en el formulario de abajo. Recibirás un código de verificación por correo electrónico y después por SMS.',
+  codeLimit: 'Para continuar, introduce en el formulario de abajo el código de verificación que te hemos enviado.',
 
   chatUnavailable: 'El chat no está disponible en este momento. Inténtalo de nuevo más tarde.',
   tooManyRequestsIn: (seconds) => `Demasiadas solicitudes. Inténtalo de nuevo en ${seconds} segundos.`,
   tooManyRequests: 'Demasiadas solicitudes. Inténtalo de nuevo en un momento.',
   connectionError: 'No se pudo conectar con el chat. Comprueba tu conexión e inténtalo de nuevo.',
+  serverError: 'Algo ha fallado por nuestra parte. Inténtalo de nuevo.',
   chatEnded: 'Este chat ha terminado. Envía un mensaje para empezar uno nuevo.',
   previousChatEnded: 'Conversación anterior finalizada',
 
-  newBooking: 'Nueva reserva',
-  myReservations: 'Mis reservas',
   loading: 'Cargando…',
   nothingBookable: 'Por el momento no se puede reservar nada en línea.',
   whatToBook: '¿Qué te gustaría reservar?',
@@ -267,22 +371,28 @@ const es: Strings = {
   requestNote: 'Esto envía una solicitud: el negocio la confirmará.',
   requestThisTime: 'Solicitar este horario',
   verifyToBook: 'Verificar mis datos para reservar',
-  verifyToSeeReservations: 'Verifica tus datos para ver tus reservas.',
-  noUpcoming: 'No tienes reservas próximas.',
-  cancelQuestion: '¿Cancelar esta reserva?',
-  yesCancel: 'Sí, cancelar',
   no: 'No',
   cancel: 'Cancelar',
-  status: {
-    PENDING: 'Pendiente de confirmación',
-    CONFIRMED: 'Confirmada',
-    CANCELLED: 'Cancelada',
-    COMPLETED: 'Completada',
+
+  summary: {
+    title: 'Tu reserva',
+    status: {
+      PENDING: 'Pendiente de confirmación por el negocio',
+      CONFIRMED: 'Confirmada',
+      CANCELLED: 'Cancelada',
+      COMPLETED: 'Completada',
+    },
+    code: 'Código de reserva',
+    ok: 'Aceptar',
+    cancelQuestion: '¿Seguro que quieres cancelar tu reserva?',
+    yesCancel: 'Sí, cancelarla',
+    cancelled: 'Tu reserva se ha cancelado.',
+    notCancellable: 'Esta reserva ya no se puede cancelar.',
+    notFound: 'No se ha encontrado la reserva.',
   },
 
   separator: ', ',
   requestSent: (reservation) => `Solicitud enviada: ${reservation} — pendiente de confirmación.`,
-  cancelled: (reservation) => `Cancelada: ${reservation}.`,
   afterBookingFallback:
     'Tu solicitud se ha enviado al negocio. Te avisaremos cuando la confirmen. ¿Hay algo más en lo que pueda ayudarte?',
 
@@ -305,31 +415,49 @@ const ru: Strings = {
   verifyMyDetails: 'Подтвердить мои данные',
 
   contactIntro:
-    'Оставьте свои данные, чтобы мы могли вас идентифицировать. Мы отправим вам коды для их подтверждения.',
+    'Оставьте свои данные, чтобы мы могли вас идентифицировать. Мы отправим вам код по электронной почте, а затем — по SMS.',
+  contactCheckIntro: 'Проверьте свои данные. Мы отправим вам код по электронной почте, а затем — по SMS.',
   firstName: 'Имя',
   lastName: 'Фамилия',
   email: 'Эл. почта',
   phone: 'Телефон',
-  continue: 'Продолжить',
+  edit: 'Изменить',
   backToChatLink: 'Вернуться в чат',
-  verifyIntro: (channel) =>
-    `Введите код, отправленный ${channel === 'EMAIL' ? 'на вашу электронную почту' : 'на ваш телефон'}`,
+  codeSentToEmail: (to) => `Введите код, отправленный на ${to}`,
+  codeSentBySms: (to) => `Введите код, отправленный по SMS на номер ${to}`,
   code: 'Код',
   confirm: 'Подтвердить',
+  resendCode: 'Отправить код повторно',
+  codeResent: 'Мы отправили вам новый код.',
+  detailsChanged: 'Ваши данные изменились. Подтвердите их.',
   changeMyDetails: 'Изменить мои данные',
+  formErrors: {
+    firstNameRequired: 'Введите имя.',
+    lastNameRequired: 'Введите фамилию.',
+    emailRequired: 'Введите адрес электронной почты.',
+    phoneRequired: 'Введите номер телефона.',
+    invalidEmail: 'Неверный адрес электронной почты.',
+    invalidPhone: 'Неверный номер телефона.',
+    invalidCode: 'Неверный код.',
+    codeExpired: 'Срок действия кода истёк. Нажмите «Отправить код повторно», чтобы получить новый.',
+    tooManyAttempts: 'Слишком много неверных кодов. Нажмите «Отправить код повторно», чтобы получить новый.',
+    tooManyCodes: 'Запрошено слишком много кодов. Повторите попытку позже.',
+    noActiveChallenge: 'Нет действующего кода. Нажмите «Отправить код повторно», чтобы получить новый.',
+    waitFewMinutes: 'Слишком много попыток. Подождите несколько минут.',
+  },
   contactLimit:
-    'Чтобы продолжить, заполните свои данные в форме ниже. Вы получите код подтверждения по электронной почте и по SMS.',
+    'Чтобы продолжить, заполните свои данные в форме ниже. Вы получите код подтверждения по электронной почте, а затем по SMS.',
+  codeLimit: 'Чтобы продолжить, введите в форме ниже код подтверждения, который мы вам отправили.',
 
   chatUnavailable: 'Чат временно недоступен. Повторите попытку позже.',
   // "с" avoids the Russian plural forms of "seconds".
   tooManyRequestsIn: (seconds) => `Слишком много запросов. Повторите попытку через ${seconds} с.`,
   tooManyRequests: 'Слишком много запросов. Повторите попытку чуть позже.',
   connectionError: 'Не удалось подключиться к чату. Проверьте соединение и повторите попытку.',
+  serverError: 'На нашей стороне что-то пошло не так. Повторите попытку.',
   chatEnded: 'Этот чат завершён. Отправьте сообщение, чтобы начать новый.',
   previousChatEnded: 'Предыдущий разговор завершён',
 
-  newBooking: 'Новое бронирование',
-  myReservations: 'Мои бронирования',
   loading: 'Загрузка…',
   nothingBookable: 'Сейчас ничего нельзя забронировать онлайн.',
   whatToBook: 'Что вы хотите забронировать?',
@@ -341,22 +469,28 @@ const ru: Strings = {
   requestNote: 'Это отправит запрос: компания его подтвердит.',
   requestThisTime: 'Запросить это время',
   verifyToBook: 'Подтвердите данные, чтобы забронировать',
-  verifyToSeeReservations: 'Подтвердите свои данные, чтобы увидеть бронирования.',
-  noUpcoming: 'Нет предстоящих бронирований.',
-  cancelQuestion: 'Отменить это бронирование?',
-  yesCancel: 'Да, отменить',
   no: 'Нет',
   cancel: 'Отменить',
-  status: {
-    PENDING: 'Ожидает подтверждения',
-    CONFIRMED: 'Подтверждено',
-    CANCELLED: 'Отменено',
-    COMPLETED: 'Завершено',
+
+  summary: {
+    title: 'Ваше бронирование',
+    status: {
+      PENDING: 'Ожидает подтверждения компанией',
+      CONFIRMED: 'Подтверждено',
+      CANCELLED: 'Отменено',
+      COMPLETED: 'Завершено',
+    },
+    code: 'Код бронирования',
+    ok: 'ОК',
+    cancelQuestion: 'Вы действительно хотите отменить бронирование?',
+    yesCancel: 'Да, отменить',
+    cancelled: 'Ваше бронирование отменено.',
+    notCancellable: 'Это бронирование больше нельзя отменить.',
+    notFound: 'Бронирование не найдено.',
   },
 
   separator: ', ',
   requestSent: (reservation) => `Запрос отправлен: ${reservation} — ожидает подтверждения.`,
-  cancelled: (reservation) => `Отменено: ${reservation}.`,
   afterBookingFallback:
     'Ваш запрос отправлен в компанию. Вы получите уведомление, как только его подтвердят. Могу ли я помочь чем-то ещё?',
 
@@ -378,30 +512,50 @@ const ar: Strings = {
   send: 'إرسال',
   verifyMyDetails: 'تأكيد بياناتي',
 
-  contactIntro: 'اترك بياناتك حتى نتمكن من التعرّف عليك. سنرسل إليك رموزًا لتأكيدها.',
+  contactIntro:
+    'اترك بياناتك حتى نتمكن من التعرّف عليك. سنرسل إليك رمزًا عبر البريد الإلكتروني، ثم رمزًا آخر عبر رسالة نصية قصيرة.',
+  contactCheckIntro:
+    'يُرجى التحقق من بياناتك. سنرسل إليك رمزًا عبر البريد الإلكتروني، ثم رمزًا آخر عبر رسالة نصية قصيرة.',
   firstName: 'الاسم الأول',
   lastName: 'اسم العائلة',
   email: 'البريد الإلكتروني',
   phone: 'الهاتف',
-  continue: 'متابعة',
+  edit: 'تعديل',
   backToChatLink: 'العودة إلى المحادثة',
-  verifyIntro: (channel) =>
-    `أدخل الرمز الذي أرسلناه إلى ${channel === 'EMAIL' ? 'بريدك الإلكتروني' : 'هاتفك'}`,
+  codeSentToEmail: (to) => `أدخل الرمز الذي أرسلناه إلى ${to}`,
+  codeSentBySms: (to) => `أدخل الرمز الذي أرسلناه برسالة نصية إلى ${to}`,
   code: 'الرمز',
   confirm: 'تأكيد',
+  resendCode: 'إعادة إرسال الرمز',
+  codeResent: 'أرسلنا إليك رمزًا جديدًا.',
+  detailsChanged: 'تغيّرت بياناتك. يُرجى تأكيدها.',
   changeMyDetails: 'تعديل بياناتي',
+  formErrors: {
+    firstNameRequired: 'يُرجى إدخال اسمك الأول.',
+    lastNameRequired: 'يُرجى إدخال اسم العائلة.',
+    emailRequired: 'يُرجى إدخال بريدك الإلكتروني.',
+    phoneRequired: 'يُرجى إدخال رقم هاتفك.',
+    invalidEmail: 'عنوان البريد الإلكتروني غير صالح.',
+    invalidPhone: 'رقم الهاتف غير صالح.',
+    invalidCode: 'الرمز غير صحيح.',
+    codeExpired: 'انتهت صلاحية هذا الرمز. استخدم «إعادة إرسال الرمز» للحصول على رمز جديد.',
+    tooManyAttempts: 'رموز غير صحيحة كثيرة جدًا. استخدم «إعادة إرسال الرمز» للحصول على رمز جديد.',
+    tooManyCodes: 'تم طلب عدد كبير جدًا من الرموز. يُرجى المحاولة لاحقًا.',
+    noActiveChallenge: 'لا يوجد رمز قيد الانتظار. استخدم «إعادة إرسال الرمز» للحصول على رمز جديد.',
+    waitFewMinutes: 'محاولات كثيرة جدًا. يُرجى الانتظار بضع دقائق.',
+  },
   contactLimit:
-    'للمتابعة، يُرجى إدخال بياناتك في النموذج أدناه. ستتلقى رمز تحقق عبر البريد الإلكتروني وعبر رسالة نصية قصيرة.',
+    'للمتابعة، يُرجى إدخال بياناتك في النموذج أدناه. ستتلقى رمز تحقق عبر البريد الإلكتروني، ثم عبر رسالة نصية قصيرة.',
+  codeLimit: 'للمتابعة، يُرجى إدخال رمز التحقق الذي أرسلناه إليك في النموذج أدناه.',
 
   chatUnavailable: 'المحادثة غير متاحة حاليًا. يُرجى المحاولة لاحقًا.',
   tooManyRequestsIn: (seconds) => `طلبات كثيرة جدًا. يُرجى المحاولة مرة أخرى بعد ${seconds} ثانية.`,
   tooManyRequests: 'طلبات كثيرة جدًا. يُرجى المحاولة مرة أخرى بعد قليل.',
   connectionError: 'تعذّر الاتصال بالمحادثة. يُرجى التحقق من اتصالك والمحاولة مرة أخرى.',
+  serverError: 'حدث خطأ من جهتنا. يُرجى المحاولة مرة أخرى.',
   chatEnded: 'انتهت هذه المحادثة. أرسل رسالة لبدء محادثة جديدة.',
   previousChatEnded: 'انتهت المحادثة السابقة',
 
-  newBooking: 'حجز جديد',
-  myReservations: 'حجوزاتي',
   loading: 'جارٍ التحميل…',
   nothingBookable: 'لا يتوفر الحجز عبر الإنترنت في الوقت الحالي.',
   whatToBook: 'ماذا تريد أن تحجز؟',
@@ -413,22 +567,28 @@ const ar: Strings = {
   requestNote: 'سيتم إرسال طلب، وستقوم المنشأة بتأكيده.',
   requestThisTime: 'اطلب هذا الموعد',
   verifyToBook: 'أكّد بياناتك للحجز',
-  verifyToSeeReservations: 'أكّد بياناتك لعرض حجوزاتك.',
-  noUpcoming: 'لا توجد حجوزات قادمة.',
-  cancelQuestion: 'هل تريد إلغاء هذا الحجز؟',
-  yesCancel: 'نعم، ألغِ الحجز',
   no: 'لا',
   cancel: 'إلغاء',
-  status: {
-    PENDING: 'بانتظار التأكيد',
-    CONFIRMED: 'مؤكَّد',
-    CANCELLED: 'ملغى',
-    COMPLETED: 'مكتمل',
+
+  summary: {
+    title: 'حجزك',
+    status: {
+      PENDING: 'بانتظار تأكيد المنشأة',
+      CONFIRMED: 'مؤكَّد',
+      CANCELLED: 'ملغى',
+      COMPLETED: 'مكتمل',
+    },
+    code: 'رمز الحجز',
+    ok: 'حسنًا',
+    cancelQuestion: 'هل تريد حقًا إلغاء حجزك؟',
+    yesCancel: 'نعم، ألغِه',
+    cancelled: 'تم إلغاء حجزك.',
+    notCancellable: 'لم يعد بالإمكان إلغاء هذا الحجز.',
+    notFound: 'لم يتم العثور على الحجز.',
   },
 
   separator: '، ',
   requestSent: (reservation) => `تم إرسال الطلب: ${reservation} — بانتظار التأكيد.`,
-  cancelled: (reservation) => `تم الإلغاء: ${reservation}.`,
   afterBookingFallback:
     'تم إرسال طلبك إلى المنشأة. سنُعلمك فور تأكيده. هل هناك أي شيء آخر يمكنني مساعدتك به؟',
 
@@ -452,30 +612,49 @@ const el: Strings = {
   verifyMyDetails: 'Επαλήθευση των στοιχείων μου',
 
   contactIntro:
-    'Αφήστε τα στοιχεία σας για να σας αναγνωρίσουμε. Θα σας στείλουμε κωδικούς για να τα επιβεβαιώσετε.',
+    'Αφήστε τα στοιχεία σας για να σας αναγνωρίσουμε. Θα σας στείλουμε έναν κωδικό μέσω email και στη συνέχεια έναν μέσω SMS.',
+  contactCheckIntro:
+    'Ελέγξτε τα στοιχεία σας. Θα σας στείλουμε έναν κωδικό μέσω email και στη συνέχεια έναν μέσω SMS.',
   firstName: 'Όνομα',
   lastName: 'Επώνυμο',
   email: 'Email',
   phone: 'Τηλέφωνο',
-  continue: 'Συνέχεια',
+  edit: 'Επεξεργασία',
   backToChatLink: 'Επιστροφή στη συνομιλία',
-  verifyIntro: (channel) =>
-    `Εισαγάγετε τον κωδικό που στείλαμε ${channel === 'EMAIL' ? 'στη διεύθυνση email σας' : 'στο τηλέφωνό σας'}`,
+  codeSentToEmail: (to) => `Εισαγάγετε τον κωδικό που στείλαμε στο ${to}`,
+  codeSentBySms: (to) => `Εισαγάγετε τον κωδικό που στείλαμε με SMS στο ${to}`,
   code: 'Κωδικός',
   confirm: 'Επιβεβαίωση',
+  resendCode: 'Νέα αποστολή κωδικού',
+  codeResent: 'Σας στείλαμε νέο κωδικό.',
+  detailsChanged: 'Τα στοιχεία σας άλλαξαν. Επιβεβαιώστε τα.',
   changeMyDetails: 'Αλλαγή των στοιχείων μου',
+  formErrors: {
+    firstNameRequired: 'Συμπληρώστε το όνομά σας.',
+    lastNameRequired: 'Συμπληρώστε το επώνυμό σας.',
+    emailRequired: 'Συμπληρώστε το email σας.',
+    phoneRequired: 'Συμπληρώστε τον αριθμό τηλεφώνου σας.',
+    invalidEmail: 'Η διεύθυνση email δεν είναι έγκυρη.',
+    invalidPhone: 'Ο αριθμός τηλεφώνου δεν είναι έγκυρος.',
+    invalidCode: 'Ο κωδικός δεν είναι σωστός.',
+    codeExpired: 'Ο κωδικός έληξε. Πατήστε «Νέα αποστολή κωδικού» για να λάβετε νέο.',
+    tooManyAttempts: 'Πάρα πολλοί λανθασμένοι κωδικοί. Πατήστε «Νέα αποστολή κωδικού» για να λάβετε νέο.',
+    tooManyCodes: 'Ζητήθηκαν πάρα πολλοί κωδικοί. Δοκιμάστε ξανά αργότερα.',
+    noActiveChallenge: 'Δεν εκκρεμεί κανένας κωδικός. Πατήστε «Νέα αποστολή κωδικού» για να λάβετε νέο.',
+    waitFewMinutes: 'Πάρα πολλές προσπάθειες. Περιμένετε λίγα λεπτά.',
+  },
   contactLimit:
-    'Για να συνεχίσετε, συμπληρώστε τα στοιχεία σας στην παρακάτω φόρμα. Θα λάβετε κωδικό επαλήθευσης μέσω email και SMS.',
+    'Για να συνεχίσετε, συμπληρώστε τα στοιχεία σας στην παρακάτω φόρμα. Θα λάβετε κωδικό επαλήθευσης μέσω email και στη συνέχεια μέσω SMS.',
+  codeLimit: 'Για να συνεχίσετε, εισαγάγετε στην παρακάτω φόρμα τον κωδικό επαλήθευσης που σας στείλαμε.',
 
   chatUnavailable: 'Η συνομιλία δεν είναι διαθέσιμη αυτή τη στιγμή. Δοκιμάστε ξανά αργότερα.',
   tooManyRequestsIn: (seconds) => `Πάρα πολλά αιτήματα. Δοκιμάστε ξανά σε ${seconds} δευτερόλεπτα.`,
   tooManyRequests: 'Πάρα πολλά αιτήματα. Δοκιμάστε ξανά σε λίγο.',
   connectionError: 'Δεν ήταν δυνατή η σύνδεση με τη συνομιλία. Ελέγξτε τη σύνδεσή σας και δοκιμάστε ξανά.',
+  serverError: 'Κάτι πήγε στραβά από την πλευρά μας. Δοκιμάστε ξανά.',
   chatEnded: 'Αυτή η συνομιλία έληξε. Στείλτε ένα μήνυμα για να ξεκινήσετε νέα.',
   previousChatEnded: 'Η προηγούμενη συνομιλία έληξε',
 
-  newBooking: 'Νέα κράτηση',
-  myReservations: 'Οι κρατήσεις μου',
   loading: 'Φόρτωση…',
   nothingBookable: 'Δεν υπάρχει τίποτα διαθέσιμο για online κράτηση αυτή τη στιγμή.',
   whatToBook: 'Τι θα θέλατε να κλείσετε;',
@@ -487,22 +666,28 @@ const el: Strings = {
   requestNote: 'Έτσι στέλνετε ένα αίτημα: η επιχείρηση θα το επιβεβαιώσει.',
   requestThisTime: 'Αίτημα για αυτή την ώρα',
   verifyToBook: 'Επαλήθευση στοιχείων για κράτηση',
-  verifyToSeeReservations: 'Επαληθεύστε τα στοιχεία σας για να δείτε τις κρατήσεις σας.',
-  noUpcoming: 'Δεν υπάρχουν επερχόμενες κρατήσεις.',
-  cancelQuestion: 'Ακύρωση αυτής της κράτησης;',
-  yesCancel: 'Ναι, ακύρωση',
   no: 'Όχι',
   cancel: 'Ακύρωση',
-  status: {
-    PENDING: 'Αναμένει επιβεβαίωση',
-    CONFIRMED: 'Επιβεβαιωμένη',
-    CANCELLED: 'Ακυρωμένη',
-    COMPLETED: 'Ολοκληρωμένη',
+
+  summary: {
+    title: 'Η κράτησή σας',
+    status: {
+      PENDING: 'Αναμένει επιβεβαίωση από την επιχείρηση',
+      CONFIRMED: 'Επιβεβαιωμένη',
+      CANCELLED: 'Ακυρωμένη',
+      COMPLETED: 'Ολοκληρωμένη',
+    },
+    code: 'Κωδικός κράτησης',
+    ok: 'OK',
+    cancelQuestion: 'Θέλετε σίγουρα να ακυρώσετε την κράτησή σας;',
+    yesCancel: 'Ναι, ακύρωση',
+    cancelled: 'Η κράτησή σας ακυρώθηκε.',
+    notCancellable: 'Αυτή η κράτηση δεν μπορεί πλέον να ακυρωθεί.',
+    notFound: 'Η κράτηση δεν βρέθηκε.',
   },
 
   separator: ', ',
   requestSent: (reservation) => `Το αίτημα στάλθηκε: ${reservation} — αναμένει επιβεβαίωση.`,
-  cancelled: (reservation) => `Ακυρώθηκε: ${reservation}.`,
   afterBookingFallback:
     'Το αίτημά σας στάλθηκε στην επιχείρηση. Θα ενημερωθείτε μόλις το επιβεβαιώσει. Μπορώ να σας βοηθήσω με κάτι άλλο;',
 

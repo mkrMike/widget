@@ -43,8 +43,14 @@ export interface ChatReply {
   /**
    * Open the contact form now: the limit is reached, or the assistant needs the
    * visitor identified (e.g. to book). The reply is shown either way.
+   * @deprecated True whenever contactForm is set; to be removed.
    */
   contactRequired: boolean
+  /**
+   * Open the contact form pre-filled with what the assistant collected in the
+   * chat (null: not known yet). Absent from an older backend.
+   */
+  contactForm?: ContactForm | null
   bookingForm: BookingForm | null
   /**
    * While not ASSISTANT, the AI doesn't answer: assistantMessage is null but
@@ -54,6 +60,24 @@ export interface ChatReply {
   /** The stored messages of this exchange (the live stream repeats them). Null: none. */
   customerMessageId?: number | null
   assistantMessageId?: number | null
+  /**
+   * The backend closed the conversation with this reply (no employee can
+   * answer): its token is revoked, the next message starts a new one.
+   */
+  closed?: boolean
+  /** Show this booking's summary card (found by its code). */
+  reservation?: ReservationSummary | null
+}
+
+/** One of the customer's bookings, found by the code in their emails. */
+export interface ReservationSummary {
+  /** "K7QM-2X9P" */
+  code: string
+  resourceName: string
+  startAt: string
+  endAt: string
+  status: ReservationStatus
+  cancellable: boolean
 }
 
 export interface ContactDetails {
@@ -63,14 +87,25 @@ export interface ContactDetails {
   phone: string
 }
 
+export type ContactForm = { [K in keyof ContactDetails]: string | null }
+
 export interface ContactReply {
   conversationId: number
+  /** ["EMAIL"]: only the email code is sent at this point. */
   verificationRequired: Channel[]
+  /** Where the code just went, masked ("j***@example.com"). Absent from an older backend. */
+  codeSentTo?: string | null
 }
 
 export interface VerifyReply {
   conversationId: number
+  /** ["PHONE"] once the email code is right: only then is the SMS sent. */
   verificationRequired: Channel[]
+  /** Set when a code was just sent ("+971 ••• ••67"), null otherwise. */
+  codeSentTo?: string | null
+  /** The reply after verification closed the conversation (see ChatReply.closed). */
+  closed?: boolean
+  reservation?: ReservationSummary | null
   /** Only once verificationRequired is empty: a NEW token, the old one is revoked. */
   accessToken: string | null
   messageId: number | null
@@ -102,19 +137,8 @@ export interface Slot {
 
 export type ReservationStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED'
 
-/** One of the visitor's own reservations. */
-export interface VisitorReservation {
-  id: number
-  resourceId: number
-  resourceName: string
-  startAt: string
-  endAt: string
-  status: ReservationStatus
-  cancellable: boolean
-}
-
-/** The booking response: the reservation, plus the assistant's reply about it. */
-export interface BookingReply extends VisitorReservation {
+/** The booking response: the new reservation's summary, plus the assistant's reply about it. */
+export interface BookingReply extends ReservationSummary {
   /** In the customer's language, already saved in the conversation; null if the AI failed. */
   assistantMessage: string | null
   assistantMessageId?: number | null
@@ -169,6 +193,9 @@ export function createApi({ widgetKey, apiUrl }: WidgetConfig) {
       )
     }
 
+    if (response.status === 204) {
+      return undefined as T
+    }
     return (await response.json()) as T
   }
 
@@ -192,8 +219,12 @@ export function createApi({ widgetKey, apiUrl }: WidgetConfig) {
     verify: (conversationId: number, accessToken: string, channel: Channel, code: string) =>
       post<VerifyReply>(`/${conversationId}/verify`, { channel, code }, accessToken),
 
-    // Booking panel. Browsing works while anonymous; booking and listing
-    // reservations answer 403 until the visitor is verified.
+    /** A new code on the same channel (204). */
+    resend: (conversationId: number, accessToken: string, channel: Channel) =>
+      post<void>(`/${conversationId}/verify/resend`, { channel }, accessToken),
+
+    // Booking panel. Browsing works while anonymous; booking answers 403 until
+    // the visitor is verified. Existing bookings are only reached by their code.
 
     resources: (conversationId: number, accessToken: string) =>
       get<BookableResource[]>(`/${conversationId}/resources`, accessToken),
@@ -210,14 +241,12 @@ export function createApi({ widgetKey, apiUrl }: WidgetConfig) {
     book: (conversationId: number, accessToken: string, resourceId: number, startAt: string) =>
       post<BookingReply>(`/${conversationId}/reservations`, { resourceId, startAt }, accessToken),
 
-    /** Upcoming PENDING or CONFIRMED reservations only: the ones that can be cancelled. */
-    reservations: (conversationId: number, accessToken: string) =>
-      get<VisitorReservation[]>(`/${conversationId}/reservations`, accessToken),
-
-    cancel: (conversationId: number, accessToken: string, reservationId: number) =>
-      post<VisitorReservation>(
-        `/${conversationId}/reservations/${reservationId}/cancel`,
-        {},
+    /** The reservation of the summary card: the same summary back, CANCELLED. */
+    cancelByCode: (conversationId: number, accessToken: string, code: string) =>
+      request<ReservationSummary>(
+        'POST',
+        `/${conversationId}/reservations/code/${encodeURIComponent(code)}/cancel`,
+        undefined,
         accessToken,
       ),
   }

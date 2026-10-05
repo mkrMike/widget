@@ -1,4 +1,6 @@
-import type { BookingForm, Channel, ConversationMode } from './api'
+import type { BookingForm, Channel, ContactDetails, ConversationMode } from './api'
+
+export const emptyContact = (): ContactDetails => ({ firstName: '', lastName: '', email: '', phone: '' })
 
 export type Step = 'chat' | 'contact' | 'verify'
 
@@ -25,8 +27,16 @@ export interface StoredChat {
   conversationId: number | null
   accessToken: string | null
   step: Step
-  /** Channels still to verify, in order. */
+  /** Channels still to verify, in order: EMAIL, then PHONE. */
   verificationRequired: Channel[]
+  /** The details in the contact form, to show where the codes were sent. */
+  contact: ContactDetails
+  /** Pre-filled by the assistant: read-only until the visitor clicks "Edit". */
+  contactLocked: boolean
+  /** When the current code was sent (ms): "Resend code" waits 30 seconds. */
+  codeSentAt: number | null
+  /** Where the current code went, masked by the backend (null: our own mask). */
+  codeSentTo: string | null
   /** The visitor is identified as a customer: the token was replaced by /verify. */
   verified: boolean
   /** The booking panel to open once the visitor is verified. */
@@ -41,6 +51,10 @@ export function emptyChat(): StoredChat {
     accessToken: null,
     step: 'chat',
     verificationRequired: [],
+    contact: emptyContact(),
+    contactLocked: false,
+    codeSentAt: null,
+    codeSentTo: null,
     verified: false,
     pendingBooking: null,
     mode: 'ASSISTANT',

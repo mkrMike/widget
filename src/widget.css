@@ -155,8 +155,65 @@ textarea {
 /* Footer and forms */
 
 .footer {
+  /* The contact or code form sits above the message box: the messages keep some room. */
+  max-height: 70%;
+  overflow-y: auto;
   padding: 0.75rem;
   border-top: 1px solid var(--border);
+}
+
+.footer .stacked-form {
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.field-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.8rem;
+}
+
+.info {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.form-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.form-buttons button {
+  flex: 1;
+}
+
+/* The booking summary card, above the message box like the contact form. */
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.summary .code {
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  letter-spacing: 0.05em;
+}
+
+.summary .form-buttons,
+.summary .confirm-cancel {
+  margin-top: 0.35rem;
+}
+
+/* Pre-filled by the assistant, until "Edit". */
+input[readonly] {
+  background: #f5f6f8;
 }
 
 .error {
@@ -243,28 +300,7 @@ button.danger {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  padding: 0 1rem 1rem;
-}
-
-.tabs {
-  display: flex;
-  gap: 0.25rem;
-  margin: 0.75rem 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.tab {
-  border: none;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  background: none;
-  color: var(--muted);
-}
-
-.tab.selected {
-  border-bottom-color: var(--accent);
-  color: var(--text);
-  font-weight: 600;
+  padding: 0.75rem 1rem 1rem;
 }
 
 .booking-body {
@@ -354,28 +390,6 @@ select {
 
 .booking-summary p {
   margin: 0;
-}
-
-.reservations {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.reservations li {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  padding: 0.6rem 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-
-.reservations li > button.link {
-  align-self: flex-start;
 }
 
 .status {

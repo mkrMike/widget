@@ -1,4 +1,4 @@
-import type { BookableResource, Slot, VisitorReservation } from './api'
+import type { BookableResource, ReservationSummary, Slot } from './api'
 import { locale, t } from './i18n'
 
 // Calendar and formatting helpers for the booking panel. Dates are wall-clock
@@ -6,7 +6,6 @@ import { locale, t } from './i18n'
 // handled as UTC so that the visitor's own time zone never shifts them.
 
 export interface BookingState {
-  tab: 'book' | 'mine'
   resources: BookableResource[] | null
   resourceId: number | null
   /** "2026-10" */
@@ -16,14 +15,10 @@ export interface BookingState {
   date: string | null
   slots: Slot[] | null
   slot: Slot | null
-  reservations: VisitorReservation[] | null
-  /** The reservation whose cancellation awaits confirmation. */
-  cancelling: number | null
 }
 
 export function emptyBooking(): BookingState {
   return {
-    tab: 'book',
     resources: null,
     resourceId: null,
     month: currentMonth(),
@@ -31,8 +26,6 @@ export function emptyBooking(): BookingState {
     date: null,
     slots: null,
     slot: null,
-    reservations: null,
-    cancelling: null,
   }
 }
 
@@ -118,6 +111,6 @@ export function formatSlot(slot: Slot): string {
 }
 
 /** "Dr Lina, Fri, 2 Oct 09:00–09:30" */
-export function describeReservation(reservation: VisitorReservation): string {
+export function describeReservation(reservation: ReservationSummary): string {
   return `${reservation.resourceName}${t().separator}${formatSlot(reservation)}`
 }

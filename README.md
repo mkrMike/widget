@@ -23,9 +23,14 @@ widget key, so reloading the page continues the chat.
 ## Flow
 
 1. The first message starts a conversation; the next ones continue it.
-2. After a few anonymous messages the backend refuses the message and asks for
-   contact details: the widget shows a contact form.
-3. The visitor enters the codes sent by email, then by SMS.
+2. The assistant collects the visitor's first name, last name, email and phone
+   in the chat. Its reply then carries `contactForm`: the widget shows the
+   contact form pre-filled, read-only with **Confirm** and **Edit**. With
+   values missing (e.g. the anonymous message limit was reached first), the
+   form is editable. The chat stays usable while the form is open.
+3. Submitting sends the email code; once it is right, the SMS code is sent.
+   **Resend code** works 30 seconds after a code was sent; **Change my
+   details** goes back to the form and starts over.
 4. Once verified, the backend returns a new access token (the old one is
    revoked) and the chat continues with no limit.
 
@@ -38,16 +43,16 @@ Only the visitor books or cancels, in the booking panel; the assistant just
 opens it (`bookingForm` in its replies, pre-selecting a resource and day).
 The panel also opens with the **Book** button in the header.
 
-- **New booking:** resource, month calendar (days with free slots), the day's
-  free times, then "Request this time". A booking is a request awaiting the
-  business's confirmation.
-- **My reservations:** the visitor's upcoming reservations (pending or
-  confirmed), each with Cancel.
+Resource, month calendar (days with free slots), the day's free times, then
+"Request this time". A booking is a request awaiting the business's
+confirmation; the assistant's reply gives its booking code.
 
-Browsing is open to anonymous visitors; booking and the reservation list need a
-verified visitor. The widget asks for verification first, then reopens the
-panel on the same resource and day. Each booking or cancellation is confirmed
-in the chat.
+Browsing is open to anonymous visitors; booking needs a verified visitor. The
+widget asks for verification first, then reopens the panel on the same resource
+and day. Each booking is confirmed in the chat.
+
+Existing bookings are only reached by their code: the assistant asks for it and
+shows the reservation's card, with Cancel while it can still be cancelled.
 
 ## Development
 
