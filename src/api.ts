@@ -143,6 +143,8 @@ export interface AvailableDays {
   month: string
   /** Days with at least one free slot, e.g. "2026-10-02". */
   days: string[]
+  /** The end of the business's booking window, e.g. "2027-01-03": nothing can be booked after it. */
+  lastBookableDay: string
 }
 
 export interface Slot {

@@ -12,6 +12,8 @@ export interface BookingState {
   month: string
   /** For resourceId and month; null while loading. */
   availableDays: string[] | null
+  /** The end of the business's booking window, from the backend; null until days were loaded. */
+  lastBookableDay: string | null
   date: string | null
   slots: Slot[] | null
   slot: Slot | null
@@ -23,14 +25,12 @@ export function emptyBooking(): BookingState {
     resourceId: null,
     month: currentMonth(),
     availableDays: null,
+    lastBookableDay: null,
     date: null,
     slots: null,
     slot: null,
   }
 }
-
-/** Bookings are open from today to today + 29 days (the backend enforces it). */
-const bookingWindowDays = 29
 
 const utc = (date: string) => new Date(`${date}T00:00:00Z`)
 const monthOfDate = (date: Date) => date.toISOString().slice(0, 7)
@@ -46,10 +46,12 @@ export function currentMonth(): string {
   return localMonth(new Date())
 }
 
-export function lastBookableMonth(): string {
-  const last = new Date()
-  last.setDate(last.getDate() + bookingWindowDays)
-  return localMonth(last)
+/**
+ * The last month the calendar can show: the one of the backend's last bookable
+ * day (each business has its own booking window). The current month until it is known.
+ */
+export function lastBookableMonth(lastBookableDay: string | null): string {
+  return lastBookableDay ? monthOf(lastBookableDay) : currentMonth()
 }
 
 export function addMonths(month: string, count: number): string {

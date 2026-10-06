@@ -568,6 +568,7 @@ export class ChatWidget {
     }
     const days = await this.api.availableDays(...this.session(), resourceId, month)
     this.booking.availableDays = days.days
+    this.booking.lastBookableDay = days.lastBookableDay
     if (date) {
       this.booking.slots = await this.api.slots(...this.session(), resourceId, date)
     }
@@ -1378,7 +1379,7 @@ export class ChatWidget {
   }
 
   private renderNewBooking(): HTMLElement {
-    const { resources, resourceId, month, availableDays, date, slots, slot } = this.booking
+    const { resources, resourceId, month, availableDays, lastBookableDay, date, slots, slot } = this.booking
 
     if (resources === null) {
       return h('p', { className: 'muted', textContent: this.busy ? t().loading : '' })
@@ -1433,7 +1434,7 @@ export class ChatWidget {
           type: 'button',
           ariaLabel: t().nextMonth,
           textContent: '›',
-          disabled: this.busy || month >= lastBookableMonth(),
+          disabled: this.busy || month >= lastBookableMonth(lastBookableDay),
           onclick: () => this.changeMonth(1),
         }),
       ),
