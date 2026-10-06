@@ -67,6 +67,20 @@ export interface ChatReply {
   closed?: boolean
   /** Show this booking's summary card (found by its code). */
   reservation?: ReservationSummary | null
+  /**
+   * The booking form card as it is now: what the assistant collected, a free
+   * slot. Null: no booking is ready to confirm (the card is hidden).
+   */
+  bookingDraft?: BookingDraft | null
+}
+
+/** A booking the assistant prepared in the chat; the visitor confirms or edits it. */
+export interface BookingDraft {
+  resourceId: number
+  resourceName: string
+  /** "2026-10-07T10:00:00" */
+  startAt: string
+  endAt: string
 }
 
 /** One of the customer's bookings, found by the code in their emails. */
@@ -106,6 +120,7 @@ export interface VerifyReply {
   /** The reply after verification closed the conversation (see ChatReply.closed). */
   closed?: boolean
   reservation?: ReservationSummary | null
+  bookingDraft?: BookingDraft | null
   /** Only once verificationRequired is empty: a NEW token, the old one is revoked. */
   accessToken: string | null
   messageId: number | null
@@ -216,8 +231,16 @@ export function createApi({ widgetKey, apiUrl }: WidgetConfig) {
     contact: (conversationId: number, accessToken: string, details: ContactDetails) =>
       post<ContactReply>(`/${conversationId}/contact`, details, accessToken),
 
-    verify: (conversationId: number, accessToken: string, channel: Channel, code: string) =>
-      post<VerifyReply>(`/${conversationId}/verify`, { channel, code }, accessToken),
+    /**
+     * bookingPending: the widget books a slot right after this code completes
+     * the verification, so the backend doesn't reply (the booking's reply will).
+     */
+    verify: (conversationId: number, accessToken: string, channel: Channel, code: string, bookingPending = false) =>
+      post<VerifyReply>(
+        `/${conversationId}/verify`,
+        bookingPending ? { channel, code, bookingPending } : { channel, code },
+        accessToken,
+      ),
 
     /** A new code on the same channel (204). */
     resend: (conversationId: number, accessToken: string, channel: Channel) =>

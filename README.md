@@ -39,17 +39,23 @@ and the next message starts a new one.
 
 ## Booking panel
 
-Only the visitor books or cancels, in the booking panel; the assistant just
-opens it (`bookingForm` in its replies, pre-selecting a resource and day).
-The panel also opens with the **Book** button in the header.
+Only the visitor books or cancels; the assistant prepares or opens:
 
-Resource, month calendar (days with free slots), the day's free times, then
-"Request this time". A booking is a request awaiting the business's
-confirmation; the assistant's reply gives its booking code.
+- **Booking form card** (`bookingDraft`): the resource, day and time the
+  assistant collected in the chat (a free slot), read-only. **Confirm** books
+  it; **Edit** opens the panel on that day with the time selected. Every reply
+  carries the draft as it is now: null hides the card.
+- **Booking panel** (`bookingForm`, or the **Book** button in the header):
+  resource, month calendar (days with free slots), the day's free times, then
+  "Request this time".
 
-Browsing is open to anonymous visitors; booking needs a verified visitor. The
-widget asks for verification first, then reopens the panel on the same resource
-and day. Each booking is confirmed in the chat.
+A booking is a request awaiting the business's confirmation; the "Request sent" line in the chat
+shows its booking code. If the time was taken meanwhile, the panel opens
+on that day with the reason.
+
+Browsing is open to anonymous visitors; booking needs a verified visitor. An
+anonymous visitor who confirms or requests a time gets the contact form first;
+once the SMS code is verified, the same slot is booked automatically.
 
 Existing bookings are only reached by their code: the assistant asks for it and
 shows the reservation's card, with Cancel while it can still be cancelled.

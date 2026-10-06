@@ -1,6 +1,7 @@
 import {
   ApiError,
   type Api,
+  type BookingDraft,
   type BookingForm,
   type ChatReply,
   type ContactDetails,
@@ -99,6 +100,16 @@ export class ChatWidget {
    */
   private summary: { reservation: ReservationSummary; stage: 'card' | 'confirm' | 'cancelled' } | null = null
   private summaryError: string | null = null
+  /**
+   * The booking form card: what the assistant collected in the chat (a free
+   * slot), read-only with Confirm and Edit. In memory only, like the summary.
+   */
+  private bookingDraft: BookingDraft | null = null
+  /**
+   * The slot an anonymous visitor chose (Confirm, or "Request this time"):
+   * booked automatically once the SMS code is verified. In memory only.
+   */
+  private bookAfterVerify: { resourceId: number; startAt: string } | null = null
   /** New messages arrived while the panel was closed: a dot on the bubble. */
   private unread = false
   private live: LiveStream | null = null
@@ -192,6 +203,7 @@ export class ChatWidget {
       }
 
       this.showSummary(reply.reservation)
+      this.showDraft(reply.bookingDraft)
 
       if (contactRequired) {
         this.showContactForm(reply.contactForm ?? null)
@@ -240,6 +252,8 @@ export class ChatWidget {
     this.blockedUntil = 0
     this.summary = null
     this.summaryError = null
+    this.bookingDraft = null
+    this.bookAfterVerify = null
   }
 
   /** A new reservation in a reply replaces the card. */
@@ -247,6 +261,17 @@ export class ChatWidget {
     if (reservation) {
       this.summary = { reservation, stage: 'card' }
       this.summaryError = null
+    }
+  }
+
+  /**
+   * Every reply carries the draft as it is now: a new one replaces the card,
+   * null hides it (dropped, booked, or waiting for a new time). Absent from an
+   * older backend: the card stays as it is.
+   */
+  private showDraft(draft: BookingDraft | null | undefined) {
+    if (draft !== undefined) {
+      this.bookingDraft = draft
     }
   }
 
@@ -338,11 +363,18 @@ export class ChatWidget {
   private async submitCode(code: string) {
     const channel = this.chat.verificationRequired[0]
     let bookingForm: BookingForm | null = null
+    // Set inside the request below (a plain `= null` would narrow it to null).
+    let toBook = null as { resourceId: number; startAt: string } | null
+
+    // The SMS code completes the verification (the email one comes first, and
+    // PHONE is only listed after it): with a slot to send right after, the
+    // booking's reply is the one.
+    const bookingPending = channel === 'PHONE' && this.bookAfterVerify !== null
 
     await this.run(async () => {
       let reply
       try {
-        reply = await this.api.verify(...this.session(), channel, code)
+        reply = await this.api.verify(...this.session(), channel, code, bookingPending)
       } catch (error) {
         if (this.showFormError(error, 'code')) {
           return
@@ -370,13 +402,19 @@ export class ChatWidget {
         this.chat.step = 'chat'
         this.addAssistantMessage(reply.assistantMessage, reply.assistantMessageId)
         this.showSummary(reply.reservation)
-        // Usually the assistant reopens the panel for the booking in progress.
-        bookingForm = reply.bookingForm ?? this.chat.pendingBooking
+        this.showDraft(reply.bookingDraft)
+        // The slot chosen before verification is sent now; otherwise the
+        // assistant usually reopens the panel for the booking in progress.
+        toBook = this.bookAfterVerify
+        bookingForm = toBook ? null : (reply.bookingForm ?? this.chat.pendingBooking)
+        this.bookAfterVerify = null
         this.chat.pendingBooking = null
       }
     })
 
-    if (bookingForm) {
+    if (toBook) {
+      await this.reserve(toBook.resourceId, toBook.startAt)
+    } else if (bookingForm) {
       this.openBooking(bookingForm)
     }
   }
@@ -485,8 +523,11 @@ export class ChatWidget {
 
   // Booking panel
 
-  /** Opens the panel, pre-selecting the resource and day when given. */
-  private openBooking(form?: BookingForm) {
+  /**
+   * Opens the panel, pre-selecting the resource and day when given, the time
+   * if it is still free, and showing why the panel opened (a refused booking).
+   */
+  private openBooking(form?: BookingForm, options: { startAt?: string; error?: string } = {}) {
     if (this.chat.conversationId === null) {
       return
     }
@@ -509,6 +550,14 @@ export class ChatWidget {
         this.booking = { ...this.booking, resourceId: null, date: null }
       }
       await this.loadDaysAndSlots()
+      const { startAt, error } = options
+      if (startAt) {
+        this.booking.slot =
+          this.booking.slots?.find((slot) => slot.startAt.slice(0, 19) === startAt.slice(0, 19)) ?? null
+      }
+      if (error) {
+        this.error = error
+      }
     })
   }
 
@@ -552,24 +601,44 @@ export class ChatWidget {
     this.render()
   }
 
+  /** "Request this time" in the panel. */
   private book() {
-    const { resourceId, slot, date } = this.booking
+    const { resourceId, slot } = this.booking
     if (resourceId === null || slot === null) {
       return
     }
+    return this.reserve(resourceId, slot.startAt)
+  }
 
+  /**
+   * Books a slot, from the panel or the booking form card. An anonymous
+   * visitor verifies first; the same slot is then sent automatically.
+   */
+  private async reserve(resourceId: number, startAt: string) {
     if (!this.chat.verified) {
-      this.askToVerify({ resourceId, date })
+      this.verifyThenBook(resourceId, startAt)
       return
     }
 
-    return this.run(async () => {
+    let refused = null as string | null
+    await this.run(async () => {
       try {
-        const reservation = await this.api.book(...this.session(), resourceId, slot.startAt)
-        this.chat.messages.push({
+        const reservation = await this.api.book(...this.session(), resourceId, startAt)
+        // The code is shown here even when the assistant doesn't reply.
+        const sent: ChatMessage = {
           from: 'event',
-          text: t().requestSent(describeReservation(reservation)),
-        })
+          text: t().requestSent(describeReservation(reservation), isolate(reservation.code)),
+        }
+        // The live stream may have shown the assistant's reply already: this goes before it.
+        const replyAt =
+          reservation.assistantMessageId == null
+            ? -1
+            : this.chat.messages.findIndex((message) => message.id === reservation.assistantMessageId)
+        if (replyAt >= 0) {
+          this.chat.messages.splice(replyAt, 0, sent)
+        } else {
+          this.chat.messages.push(sent)
+        }
         // The assistant's reply about the booking, in the customer's language
         // (already saved in the conversation); our own text if the AI failed.
         const reply = reservation.assistantMessage?.trim()
@@ -578,17 +647,34 @@ export class ChatWidget {
         } else {
           this.addAssistantMessage(t().afterBookingFallback)
         }
+        this.bookingDraft = null
         this.booking = { ...emptyBooking(), resources: this.booking.resources }
         this.view = 'chat'
       } catch (error) {
+        // Not verified after all (e.g. another tab): verification first.
+        if (error instanceof ApiError && error.status === 403) {
+          this.verifyThenBook(resourceId, startAt)
+          this.error = error.message
+          return
+        }
+        // Most likely the slot was taken meanwhile ("This time is not available
+        // anymore: please choose another slot"): the panel on that day.
         if (error instanceof ApiError && error.status === 400) {
-          // Most likely the slot was taken meanwhile: show the day's slots again.
-          this.booking.slot = null
-          await this.loadDaysAndSlots().catch(() => undefined)
+          refused = error.message
+          return
         }
         throw error
       }
     })
+
+    if (refused) {
+      this.openBooking({ resourceId, date: startAt.slice(0, 10) }, { error: refused })
+    }
+  }
+
+  private verifyThenBook(resourceId: number, startAt: string) {
+    this.bookAfterVerify = { resourceId, startAt }
+    this.askToVerify({ resourceId, date: startAt.slice(0, 10) })
   }
 
   /** Verification first; the panel reopens on the same resource and day afterwards. */
@@ -930,6 +1016,7 @@ export class ChatWidget {
         errorLine,
         this.renderStepForm(),
         this.renderSummary(),
+        this.renderDraft(),
         this.renderMessageForm(),
       ),
     )
@@ -1033,6 +1120,41 @@ export class ChatWidget {
       stage === 'cancelled' ? h('p', { className: 'info', role: 'status', textContent: texts.cancelled }) : null,
       this.summaryError ? h('p', { className: 'field-error', role: 'alert', textContent: this.summaryError }) : null,
       buttons,
+    )
+  }
+
+  /** The booking the assistant prepared: Confirm books it, Edit opens the panel on it. */
+  private renderDraft(): HTMLElement | null {
+    const draft = this.bookingDraft
+    if (!draft) {
+      return null
+    }
+    const date = draft.startAt.slice(0, 10)
+
+    return h(
+      'section',
+      { className: 'summary draft', ariaLabel: t().draftTitle },
+      h('strong', { textContent: t().draftTitle }),
+      h('span', { textContent: draft.resourceName }),
+      h('span', { textContent: formatSlot(draft) }),
+      h('span', { className: 'muted small', textContent: t().requestNote }),
+      h(
+        'div',
+        { className: 'form-buttons' },
+        h('button', {
+          type: 'button',
+          className: 'primary',
+          textContent: t().confirm,
+          disabled: this.busy,
+          onclick: () => void this.reserve(draft.resourceId, draft.startAt),
+        }),
+        h('button', {
+          type: 'button',
+          textContent: t().edit,
+          disabled: this.busy,
+          onclick: () => this.openBooking({ resourceId: draft.resourceId, date }, { startAt: draft.startAt }),
+        }),
+      ),
     )
   }
 

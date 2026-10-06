@@ -189,7 +189,7 @@ textarea {
   flex: 1;
 }
 
-/* The booking summary card, above the message box like the contact form. */
+/* The booking summary and booking form cards, above the message box like the contact form. */
 .summary {
   display: flex;
   flex-direction: column;

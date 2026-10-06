@@ -82,6 +82,8 @@ export interface Strings {
   requestNote: string
   requestThisTime: string
   verifyToBook: string
+  /** The booking form card the assistant prepared. */
+  draftTitle: string
   no: string
   cancel: string
 
@@ -101,7 +103,8 @@ export interface Strings {
 
   /** Separates the resource from the date in "Dr Lina, Fri 2 Oct 09:00–09:30". */
   separator: string
-  requestSent: (reservation: string) => string
+  /** The code is from the booking response, already isolated for right-to-left text. */
+  requestSent: (reservation: string, code: string) => string
   /** After a booking, when the assistant couldn't answer. */
   afterBookingFallback: string
 
@@ -177,6 +180,7 @@ const en: Strings = {
   requestNote: 'This sends a request: the business will confirm it.',
   requestThisTime: 'Request this time',
   verifyToBook: 'Verify my details to book',
+  draftTitle: 'Book this time?',
   no: 'No',
   cancel: 'Cancel',
 
@@ -198,7 +202,7 @@ const en: Strings = {
   },
 
   separator: ', ',
-  requestSent: (reservation) => `Request sent: ${reservation} — awaiting confirmation.`,
+  requestSent: (reservation, code) => `Request sent: ${reservation} — awaiting confirmation. Booking code: ${code}`,
   afterBookingFallback:
     'Your request has been sent to the business. You will be notified once they confirm it. Is there anything else I can help you with?',
 
@@ -274,6 +278,7 @@ const fr: Strings = {
   requestNote: 'Ceci envoie une demande : l’établissement la confirmera.',
   requestThisTime: 'Demander ce créneau',
   verifyToBook: 'Vérifier mes coordonnées pour réserver',
+  draftTitle: 'Réserver ce créneau ?',
   no: 'Non',
   cancel: 'Annuler',
 
@@ -295,7 +300,7 @@ const fr: Strings = {
   },
 
   separator: ', ',
-  requestSent: (reservation) => `Demande envoyée : ${reservation} — en attente de confirmation.`,
+  requestSent: (reservation, code) => `Demande envoyée : ${reservation} — en attente de confirmation. Code de réservation : ${code}`,
   afterBookingFallback:
     'Votre demande a été envoyée à l’établissement. Vous serez averti dès qu’elle sera confirmée. Puis-je vous aider pour autre chose ?',
 
@@ -371,6 +376,7 @@ const es: Strings = {
   requestNote: 'Esto envía una solicitud: el negocio la confirmará.',
   requestThisTime: 'Solicitar este horario',
   verifyToBook: 'Verificar mis datos para reservar',
+  draftTitle: '¿Reservar este horario?',
   no: 'No',
   cancel: 'Cancelar',
 
@@ -392,7 +398,7 @@ const es: Strings = {
   },
 
   separator: ', ',
-  requestSent: (reservation) => `Solicitud enviada: ${reservation} — pendiente de confirmación.`,
+  requestSent: (reservation, code) => `Solicitud enviada: ${reservation} — pendiente de confirmación. Código de reserva: ${code}`,
   afterBookingFallback:
     'Tu solicitud se ha enviado al negocio. Te avisaremos cuando la confirmen. ¿Hay algo más en lo que pueda ayudarte?',
 
@@ -469,6 +475,7 @@ const ru: Strings = {
   requestNote: 'Это отправит запрос: компания его подтвердит.',
   requestThisTime: 'Запросить это время',
   verifyToBook: 'Подтвердите данные, чтобы забронировать',
+  draftTitle: 'Забронировать это время?',
   no: 'Нет',
   cancel: 'Отменить',
 
@@ -490,7 +497,7 @@ const ru: Strings = {
   },
 
   separator: ', ',
-  requestSent: (reservation) => `Запрос отправлен: ${reservation} — ожидает подтверждения.`,
+  requestSent: (reservation, code) => `Запрос отправлен: ${reservation} — ожидает подтверждения. Код бронирования: ${code}`,
   afterBookingFallback:
     'Ваш запрос отправлен в компанию. Вы получите уведомление, как только его подтвердят. Могу ли я помочь чем-то ещё?',
 
@@ -567,6 +574,7 @@ const ar: Strings = {
   requestNote: 'سيتم إرسال طلب، وستقوم المنشأة بتأكيده.',
   requestThisTime: 'اطلب هذا الموعد',
   verifyToBook: 'أكّد بياناتك للحجز',
+  draftTitle: 'هل تريد حجز هذا الموعد؟',
   no: 'لا',
   cancel: 'إلغاء',
 
@@ -588,7 +596,7 @@ const ar: Strings = {
   },
 
   separator: '، ',
-  requestSent: (reservation) => `تم إرسال الطلب: ${reservation} — بانتظار التأكيد.`,
+  requestSent: (reservation, code) => `تم إرسال الطلب: ${reservation} — بانتظار التأكيد. رمز الحجز: ${code}`,
   afterBookingFallback:
     'تم إرسال طلبك إلى المنشأة. سنُعلمك فور تأكيده. هل هناك أي شيء آخر يمكنني مساعدتك به؟',
 
@@ -666,6 +674,7 @@ const el: Strings = {
   requestNote: 'Έτσι στέλνετε ένα αίτημα: η επιχείρηση θα το επιβεβαιώσει.',
   requestThisTime: 'Αίτημα για αυτή την ώρα',
   verifyToBook: 'Επαλήθευση στοιχείων για κράτηση',
+  draftTitle: 'Κράτηση αυτής της ώρας;',
   no: 'Όχι',
   cancel: 'Ακύρωση',
 
@@ -687,7 +696,7 @@ const el: Strings = {
   },
 
   separator: ', ',
-  requestSent: (reservation) => `Το αίτημα στάλθηκε: ${reservation} — αναμένει επιβεβαίωση.`,
+  requestSent: (reservation, code) => `Το αίτημα στάλθηκε: ${reservation} — αναμένει επιβεβαίωση. Κωδικός κράτησης: ${code}`,
   afterBookingFallback:
     'Το αίτημά σας στάλθηκε στην επιχείρηση. Θα ενημερωθείτε μόλις το επιβεβαιώσει. Μπορώ να σας βοηθήσω με κάτι άλλο;',
 
