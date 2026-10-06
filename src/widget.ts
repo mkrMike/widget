@@ -1,8 +1,10 @@
 import {
   ApiError,
   type Api,
+  type BookableResource,
   type BookingDraft,
   type BookingForm,
+  type BookingRequest,
   type ChatReply,
   type ContactDetails,
   type ContactForm,
@@ -16,6 +18,7 @@ import {
   type BookingState,
   calendarCells,
   currentMonth,
+  dayAt,
   describeReservation,
   emptyBooking,
   formatDay,
@@ -25,6 +28,7 @@ import {
   formatTime,
   lastBookableMonth,
   monthOf,
+  nightsBetween,
   weekdayInitials,
 } from './booking'
 import { detailsChangedError, type ErrorPlace, isolate, knownError, maskEmail, maskPhone } from './contact'
@@ -38,6 +42,10 @@ const contactFields: (keyof ContactDetails)[] = ['firstName', 'lastName', 'email
 
 /** "Resend code" is active this long after a code was sent. */
 const resendDelayMs = 30_000
+
+/** The day the booking panel reopens on: the slot's, or the stay's check-in day. */
+const bookingDay = (booking: BookingRequest) =>
+  'startAt' in booking ? booking.startAt.slice(0, 10) : booking.checkInDay
 
 const senderFrom: Record<string, ChatMessage['from']> = {
   CUSTOMER: 'visitor',
@@ -106,10 +114,10 @@ export class ChatWidget {
    */
   private bookingDraft: BookingDraft | null = null
   /**
-   * The slot an anonymous visitor chose (Confirm, or "Request this time"):
-   * booked automatically once the SMS code is verified. In memory only.
+   * The slot or stay an anonymous visitor chose (Confirm, or "Request this
+   * time"): booked automatically once the SMS code is verified. In memory only.
    */
-  private bookAfterVerify: { resourceId: number; startAt: string } | null = null
+  private bookAfterVerify: BookingRequest | null = null
   /** New messages arrived while the panel was closed: a dot on the bubble. */
   private unread = false
   private live: LiveStream | null = null
@@ -364,7 +372,7 @@ export class ChatWidget {
     const channel = this.chat.verificationRequired[0]
     let bookingForm: BookingForm | null = null
     // Set inside the request below (a plain `= null` would narrow it to null).
-    let toBook = null as { resourceId: number; startAt: string } | null
+    let toBook = null as BookingRequest | null
 
     // The SMS code completes the verification (the email one comes first, and
     // PHONE is only listed after it): with a slot to send right after, the
@@ -413,7 +421,7 @@ export class ChatWidget {
     })
 
     if (toBook) {
-      await this.reserve(toBook.resourceId, toBook.startAt)
+      await this.reserve(toBook)
     } else if (bookingForm) {
       this.openBooking(bookingForm)
     }
@@ -527,7 +535,10 @@ export class ChatWidget {
    * Opens the panel, pre-selecting the resource and day when given, the time
    * if it is still free, and showing why the panel opened (a refused booking).
    */
-  private openBooking(form?: BookingForm, options: { startAt?: string; error?: string } = {}) {
+  private openBooking(
+    form?: BookingForm,
+    options: { startAt?: string; checkOutDay?: string; error?: string } = {},
+  ) {
     if (this.chat.conversationId === null) {
       return
     }
@@ -550,10 +561,21 @@ export class ChatWidget {
         this.booking = { ...this.booking, resourceId: null, date: null }
       }
       await this.loadDaysAndSlots()
-      const { startAt, error } = options
+      const { startAt, checkOutDay, error } = options
       if (startAt) {
         this.booking.slot =
           this.booking.slots?.find((slot) => slot.startAt.slice(0, 19) === startAt.slice(0, 19)) ?? null
+      }
+      // A stay's check-out day, if a stay from that check-in day can still end on it.
+      const stay = this.booking.stayOptions
+      if (
+        checkOutDay &&
+        stay?.firstCheckOutDay &&
+        stay.lastCheckOutDay &&
+        checkOutDay >= stay.firstCheckOutDay &&
+        checkOutDay <= stay.lastCheckOutDay
+      ) {
+        this.booking.checkOutDay = checkOutDay
       }
       if (error) {
         this.error = error
@@ -569,20 +591,57 @@ export class ChatWidget {
     const days = await this.api.availableDays(...this.session(), resourceId, month)
     this.booking.availableDays = days.days
     this.booking.lastBookableDay = days.lastBookableDay
-    if (date) {
-      this.booking.slots = await this.api.slots(...this.session(), resourceId, date)
+    if (!date) {
+      return
     }
+    // By the night: the stays that can start that day (no slots: /slots answers 400).
+    if (this.byTheNight()) {
+      const options = await this.api.stayOptions(...this.session(), resourceId, date)
+      if (options.maxNights < 1 || !options.firstCheckOutDay || !options.lastCheckOutDay) {
+        this.booking = { ...this.booking, date: null, stayOptions: null, checkOutDay: null }
+        this.error = t().noStayFrom(formatDay(date))
+        return
+      }
+      this.booking.stayOptions = options
+      return
+    }
+    this.booking.slots = await this.api.slots(...this.session(), resourceId, date)
+  }
+
+  private selectedResource(): BookableResource | null {
+    return this.booking.resources?.find((resource) => resource.id === this.booking.resourceId) ?? null
+  }
+
+  /** The selected resource is booked by the night (a stay), not by time slots. */
+  private byTheNight(): boolean {
+    return this.selectedResource()?.bookingMode === 'NIGHTS'
   }
 
   private selectResource(resourceId: number | null) {
-    this.booking = { ...this.booking, resourceId, availableDays: null, date: null, slots: null, slot: null }
+    this.booking = {
+      ...this.booking,
+      resourceId,
+      availableDays: null,
+      date: null,
+      slots: null,
+      slot: null,
+      stayOptions: null,
+      checkOutDay: null,
+    }
     void this.run(() => this.loadDaysAndSlots())
   }
 
   private changeMonth(count: number) {
+    const month = addMonths(this.booking.month, count)
+    // Choosing a check-out day, maybe in a later month: the check-in day stays.
+    if (this.booking.stayOptions) {
+      this.booking.month = month
+      this.render()
+      return
+    }
     this.booking = {
       ...this.booking,
-      month: addMonths(this.booking.month, count),
+      month,
       availableDays: null,
       date: null,
       slots: null,
@@ -591,8 +650,28 @@ export class ChatWidget {
     void this.run(() => this.loadDaysAndSlots())
   }
 
+  /** The day of a slot, or the check-in day of a stay. */
   private selectDay(date: string) {
-    this.booking = { ...this.booking, date, slots: null, slot: null }
+    this.booking = { ...this.booking, date, slots: null, slot: null, stayOptions: null, checkOutDay: null }
+    void this.run(() => this.loadDaysAndSlots())
+  }
+
+  private selectCheckOutDay(checkOutDay: string) {
+    this.booking.checkOutDay = checkOutDay
+    this.error = null
+    this.render()
+  }
+
+  /** Back to choosing the check-in day, in its month. */
+  private changeCheckIn() {
+    this.booking = {
+      ...this.booking,
+      month: this.booking.date ? monthOf(this.booking.date) : this.booking.month,
+      availableDays: null,
+      date: null,
+      stayOptions: null,
+      checkOutDay: null,
+    }
     void this.run(() => this.loadDaysAndSlots())
   }
 
@@ -602,29 +681,32 @@ export class ChatWidget {
     this.render()
   }
 
-  /** "Request this time" in the panel. */
+  /** "Request this time" or "Request this stay" in the panel. */
   private book() {
-    const { resourceId, slot } = this.booking
-    if (resourceId === null || slot === null) {
+    const { resourceId, slot, date, checkOutDay } = this.booking
+    if (resourceId === null) {
       return
     }
-    return this.reserve(resourceId, slot.startAt)
+    if (this.byTheNight()) {
+      return date && checkOutDay ? this.reserve({ resourceId, checkInDay: date, checkOutDay }) : undefined
+    }
+    return slot ? this.reserve({ resourceId, startAt: slot.startAt }) : undefined
   }
 
   /**
-   * Books a slot, from the panel or the booking form card. An anonymous
-   * visitor verifies first; the same slot is then sent automatically.
+   * Books a slot or a stay, from the panel or the booking form card. An
+   * anonymous visitor verifies first; the same one is then sent automatically.
    */
-  private async reserve(resourceId: number, startAt: string) {
+  private async reserve(booking: BookingRequest) {
     if (!this.chat.verified) {
-      this.verifyThenBook(resourceId, startAt)
+      this.verifyThenBook(booking)
       return
     }
 
     let refused = null as string | null
     await this.run(async () => {
       try {
-        const reservation = await this.api.book(...this.session(), resourceId, startAt)
+        const reservation = await this.api.book(...this.session(), booking)
         // The code is shown here even when the assistant doesn't reply.
         const sent: ChatMessage = {
           from: 'event',
@@ -654,12 +736,14 @@ export class ChatWidget {
       } catch (error) {
         // Not verified after all (e.g. another tab): verification first.
         if (error instanceof ApiError && error.status === 403) {
-          this.verifyThenBook(resourceId, startAt)
+          this.verifyThenBook(booking)
           this.error = error.message
           return
         }
         // Most likely the slot was taken meanwhile ("This time is not available
-        // anymore: please choose another slot"): the panel on that day.
+        // anymore: please choose another slot"), or the stay can't be that long
+        // ("Palm villa is free for 2 nights at most from 2026-01-03"): the
+        // panel on that day, with the reason.
         if (error instanceof ApiError && error.status === 400) {
           refused = error.message
           return
@@ -669,13 +753,13 @@ export class ChatWidget {
     })
 
     if (refused) {
-      this.openBooking({ resourceId, date: startAt.slice(0, 10) }, { error: refused })
+      this.openBooking({ resourceId: booking.resourceId, date: bookingDay(booking) }, { error: refused })
     }
   }
 
-  private verifyThenBook(resourceId: number, startAt: string) {
-    this.bookAfterVerify = { resourceId, startAt }
-    this.askToVerify({ resourceId, date: startAt.slice(0, 10) })
+  private verifyThenBook(booking: BookingRequest) {
+    this.bookAfterVerify = booking
+    this.askToVerify({ resourceId: booking.resourceId, date: bookingDay(booking) })
   }
 
   /** Verification first; the panel reopens on the same resource and day afterwards. */
@@ -1107,7 +1191,7 @@ export class ChatWidget {
       { className: 'summary', ariaLabel: texts.title },
       h('strong', { textContent: texts.title }),
       h('span', { textContent: reservation.resourceName }),
-      h('span', { textContent: formatSlot(reservation) }),
+      h('span', { textContent: formatSlot(reservation, reservation.nights) }),
       h('span', {
         className: `status ${reservation.status.toLowerCase()}`,
         textContent: texts.status[reservation.status],
@@ -1130,14 +1214,21 @@ export class ChatWidget {
     if (!draft) {
       return null
     }
-    const date = draft.startAt.slice(0, 10)
+    // A stay (nights set): its two days instead of a slot's start. An older
+    // backend sends neither: a time slot.
+    const stay =
+      draft.nights != null && draft.checkInDay && draft.checkOutDay
+        ? { checkInDay: draft.checkInDay, checkOutDay: draft.checkOutDay }
+        : null
+    const date = stay?.checkInDay ?? draft.startAt.slice(0, 10)
+    const title = stay ? t().draftStayTitle : t().draftTitle
 
     return h(
       'section',
-      { className: 'summary draft', ariaLabel: t().draftTitle },
-      h('strong', { textContent: t().draftTitle }),
+      { className: 'summary draft', ariaLabel: title },
+      h('strong', { textContent: title }),
       h('span', { textContent: draft.resourceName }),
-      h('span', { textContent: formatSlot(draft) }),
+      h('span', { textContent: formatSlot(draft, stay ? draft.nights : null) }),
       h('span', { className: 'muted small', textContent: t().requestNote }),
       h(
         'div',
@@ -1147,13 +1238,22 @@ export class ChatWidget {
           className: 'primary',
           textContent: t().confirm,
           disabled: this.busy,
-          onclick: () => void this.reserve(draft.resourceId, draft.startAt),
+          onclick: () =>
+            void this.reserve(
+              stay
+                ? { resourceId: draft.resourceId, ...stay }
+                : { resourceId: draft.resourceId, startAt: draft.startAt },
+            ),
         }),
         h('button', {
           type: 'button',
           textContent: t().edit,
           disabled: this.busy,
-          onclick: () => this.openBooking({ resourceId: draft.resourceId, date }, { startAt: draft.startAt }),
+          onclick: () =>
+            this.openBooking(
+              { resourceId: draft.resourceId, date },
+              stay ? { checkOutDay: stay.checkOutDay } : { startAt: draft.startAt },
+            ),
         }),
       ),
     )
@@ -1379,7 +1479,8 @@ export class ChatWidget {
   }
 
   private renderNewBooking(): HTMLElement {
-    const { resources, resourceId, month, availableDays, lastBookableDay, date, slots, slot } = this.booking
+    const { resources, resourceId, month, availableDays, lastBookableDay, date, slots, slot, stayOptions, checkOutDay } =
+      this.booking
 
     if (resources === null) {
       return h('p', { className: 'muted', textContent: this.busy ? t().loading : '' })
@@ -1416,9 +1517,63 @@ export class ChatWidget {
       return h('div', { className: 'booking-body' }, resourceSelect)
     }
 
+    const stay = resources.find((resource) => resource.id === resourceId)?.bookingMode === 'NIGHTS'
+    // A stay's check-in day is chosen: the calendar now picks the check-out day,
+    // from the first to the last one the backend allows (maybe in a later month).
+    const checkOut =
+      stay && date && stayOptions?.firstCheckOutDay && stayOptions.lastCheckOutDay
+        ? { checkIn: date, first: stayOptions.firstCheckOutDay, last: stayOptions.lastCheckOutDay }
+        : null
+    const firstMonth = checkOut ? monthOf(checkOut.checkIn) : currentMonth()
+    const lastMonth = checkOut ? monthOf(checkOut.last) : lastBookableMonth(lastBookableDay)
+
+    const dayButton = (day: string) => {
+      if (!checkOut) {
+        return h('button', {
+          type: 'button',
+          className: `day${day === date ? ' selected' : ''}`,
+          textContent: formatDayNumber(day),
+          ariaLabel: formatDay(day),
+          disabled: this.busy || !availableDays?.includes(day),
+          onclick: () => this.selectDay(day),
+        })
+      }
+      const selected = day === checkOut.checkIn || day === checkOutDay
+      const inStay = checkOutDay !== null && day > checkOut.checkIn && day < checkOutDay
+      return h('button', {
+        type: 'button',
+        className: `day${selected ? ' selected' : inStay ? ' in-stay' : ''}`,
+        textContent: formatDayNumber(day),
+        ariaLabel: formatDay(day),
+        disabled: this.busy || day < checkOut.first || day > checkOut.last,
+        onclick: () => this.selectCheckOutDay(day),
+      })
+    }
+
+    const stayHint = !stay
+      ? null
+      : checkOut && stayOptions
+        ? h(
+            'p',
+            { className: 'muted small' },
+            `${t().chooseCheckOut} ${t().stayRange(
+              t().nights(nightsBetween(checkOut.checkIn, checkOut.first)),
+              t().nights(nightsBetween(checkOut.checkIn, checkOut.last)),
+            )} `,
+            h('button', {
+              type: 'button',
+              className: 'link',
+              textContent: t().changeCheckIn,
+              disabled: this.busy,
+              onclick: () => this.changeCheckIn(),
+            }),
+          )
+        : h('p', { className: 'muted small', textContent: t().chooseCheckIn })
+
     const calendar = h(
       'div',
       { className: 'calendar' },
+      stayHint,
       h(
         'div',
         { className: 'calendar-header' },
@@ -1426,7 +1581,7 @@ export class ChatWidget {
           type: 'button',
           ariaLabel: t().previousMonth,
           textContent: '‹',
-          disabled: this.busy || month <= currentMonth(),
+          disabled: this.busy || month <= firstMonth,
           onclick: () => this.changeMonth(-1),
         }),
         h('span', { textContent: formatMonth(month) }),
@@ -1434,7 +1589,7 @@ export class ChatWidget {
           type: 'button',
           ariaLabel: t().nextMonth,
           textContent: '›',
-          disabled: this.busy || month >= lastBookableMonth(lastBookableDay),
+          disabled: this.busy || month >= lastMonth,
           onclick: () => this.changeMonth(1),
         }),
       ),
@@ -1442,20 +1597,9 @@ export class ChatWidget {
         'div',
         { className: 'calendar-grid' },
         ...weekdayInitials().map((initial) => h('span', { className: 'weekday', textContent: initial })),
-        ...calendarCells(month).map((day) =>
-          day === null
-            ? h('span', {})
-            : h('button', {
-                type: 'button',
-                className: `day${day === date ? ' selected' : ''}`,
-                textContent: formatDayNumber(day),
-                ariaLabel: formatDay(day),
-                disabled: this.busy || !availableDays?.includes(day),
-                onclick: () => this.selectDay(day),
-              }),
-        ),
+        ...calendarCells(month).map((day) => (day === null ? h('span', {}) : dayButton(day))),
       ),
-      availableDays?.length === 0
+      !checkOut && availableDays?.length === 0
         ? h('p', { className: 'muted small', textContent: t().noFreeDays })
         : null,
     )
@@ -1480,11 +1624,26 @@ export class ChatWidget {
             )
 
     const resourceName = resources.find((resource) => resource.id === resourceId)?.name ?? ''
-    const summary = slot
+    // The stay as a slot: from check-in on the first day to check-out on the last.
+    const chosenStay =
+      checkOut && stayOptions && checkOutDay
+        ? {
+            startAt: dayAt(checkOut.checkIn, stayOptions.checkInTime),
+            endAt: dayAt(checkOutDay, stayOptions.checkOutTime),
+          }
+        : null
+    const chosen = stay ? chosenStay : slot
+    const summary = chosen
       ? h(
           'div',
           { className: 'booking-summary' },
-          h('strong', { textContent: `${resourceName}, ${formatSlot(slot)}` }),
+          h('strong', { textContent: `${resourceName}${t().separator}${formatSlot(chosen, chosenStay ? nightsBetween(chosenStay.startAt, chosenStay.endAt) : null)}` }),
+          chosenStay
+            ? h('p', {
+                className: 'small',
+                textContent: `${t().stayTimes(formatTime(chosenStay.startAt), formatTime(chosenStay.endAt))}${t().separator}${t().nights(nightsBetween(chosenStay.startAt, chosenStay.endAt))}`,
+              })
+            : null,
           h('p', {
             className: 'muted small',
             textContent: t().requestNote,
@@ -1492,7 +1651,11 @@ export class ChatWidget {
           h('button', {
             type: 'button',
             className: 'primary',
-            textContent: this.chat.verified ? t().requestThisTime : t().verifyToBook,
+            textContent: !this.chat.verified
+              ? t().verifyToBook
+              : chosenStay
+                ? t().requestThisStay
+                : t().requestThisTime,
             disabled: this.busy,
             onclick: () => void this.book(),
           }),

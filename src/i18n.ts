@@ -82,6 +82,21 @@ export interface Strings {
   requestNote: string
   requestThisTime: string
   verifyToBook: string
+
+  // A stay: a resource booked by the night.
+  chooseCheckIn: string
+  chooseCheckOut: string
+  changeCheckIn: string
+  /** The times as the language writes them, e.g. "14:00" and "11:00". */
+  stayTimes: (checkIn: string, checkOut: string) => string
+  /** "1 night", "3 nights", with the language's plural forms. */
+  nights: (count: number) => string
+  /** The shortest and longest stay from the chosen check-in day, already as "2 nights". */
+  stayRange: (shortest: string, longest: string) => string
+  noStayFrom: (day: string) => string
+  requestThisStay: string
+  /** The booking form card, for a stay. */
+  draftStayTitle: string
   /** The booking form card the assistant prepared. */
   draftTitle: string
   no: string
@@ -180,6 +195,17 @@ const en: Strings = {
   requestNote: 'This sends a request: the business will confirm it.',
   requestThisTime: 'Request this time',
   verifyToBook: 'Verify my details to book',
+
+  chooseCheckIn: 'Choose your check-in day.',
+  chooseCheckOut: 'Now choose your check-out day.',
+  changeCheckIn: 'Change the check-in day',
+  stayTimes: (checkIn, checkOut) => `Check-in ${checkIn}, check-out ${checkOut}`,
+  nights: (count) => (count === 1 ? '1 night' : `${count} nights`),
+  stayRange: (shortest, longest) =>
+    shortest === longest ? `Stay: ${shortest}.` : `Stay: from ${shortest} to ${longest}.`,
+  noStayFrom: (day) => `No stay can start on ${day}. Please choose another day.`,
+  requestThisStay: 'Request this stay',
+  draftStayTitle: 'Book this stay?',
   draftTitle: 'Book this time?',
   no: 'No',
   cancel: 'Cancel',
@@ -278,6 +304,17 @@ const fr: Strings = {
   requestNote: 'Ceci envoie une demande : l’établissement la confirmera.',
   requestThisTime: 'Demander ce créneau',
   verifyToBook: 'Vérifier mes coordonnées pour réserver',
+
+  chooseCheckIn: 'Choisissez votre jour d’arrivée.',
+  chooseCheckOut: 'Choisissez maintenant votre jour de départ.',
+  changeCheckIn: 'Changer le jour d’arrivée',
+  stayTimes: (checkIn, checkOut) => `Arrivée ${checkIn}, départ ${checkOut}`,
+  nights: (count) => (count <= 1 ? `${count} nuit` : `${count} nuits`),
+  stayRange: (shortest, longest) =>
+    shortest === longest ? `Séjour : ${shortest}.` : `Séjour : de ${shortest} à ${longest}.`,
+  noStayFrom: (day) => `Aucun séjour ne peut commencer le ${day}. Veuillez choisir un autre jour.`,
+  requestThisStay: 'Demander ce séjour',
+  draftStayTitle: 'Réserver ce séjour ?',
   draftTitle: 'Réserver ce créneau ?',
   no: 'Non',
   cancel: 'Annuler',
@@ -376,6 +413,17 @@ const es: Strings = {
   requestNote: 'Esto envía una solicitud: el negocio la confirmará.',
   requestThisTime: 'Solicitar este horario',
   verifyToBook: 'Verificar mis datos para reservar',
+
+  chooseCheckIn: 'Elige tu día de entrada.',
+  chooseCheckOut: 'Ahora elige tu día de salida.',
+  changeCheckIn: 'Cambiar el día de entrada',
+  stayTimes: (checkIn, checkOut) => `Entrada ${checkIn}, salida ${checkOut}`,
+  nights: (count) => (count === 1 ? '1 noche' : `${count} noches`),
+  stayRange: (shortest, longest) =>
+    shortest === longest ? `Estancia: ${shortest}.` : `Estancia: de ${shortest} a ${longest}.`,
+  noStayFrom: (day) => `Ninguna estancia puede empezar el ${day}. Elige otro día.`,
+  requestThisStay: 'Solicitar esta estancia',
+  draftStayTitle: '¿Reservar esta estancia?',
   draftTitle: '¿Reservar este horario?',
   no: 'No',
   cancel: 'Cancelar',
@@ -475,6 +523,21 @@ const ru: Strings = {
   requestNote: 'Это отправит запрос: компания его подтвердит.',
   requestThisTime: 'Запросить это время',
   verifyToBook: 'Подтвердите данные, чтобы забронировать',
+
+  chooseCheckIn: 'Выберите день заезда.',
+  chooseCheckOut: 'Теперь выберите день выезда.',
+  changeCheckIn: 'Изменить день заезда',
+  stayTimes: (checkIn, checkOut) => `Заезд ${checkIn}, выезд ${checkOut}`,
+  // 1 ночь, 2–4 ночи, 5–20 ночей, 21 ночь…
+  nights: (count) => {
+    const form = new Intl.PluralRules('ru').select(count)
+    return `${count} ${form === 'one' ? 'ночь' : form === 'few' ? 'ночи' : 'ночей'}`
+  },
+  stayRange: (shortest, longest) =>
+    shortest === longest ? `Проживание: ${shortest}.` : `Проживание: от ${shortest} до ${longest}.`,
+  noStayFrom: (day) => `Проживание не может начаться в этот день: ${day}. Выберите другой день.`,
+  requestThisStay: 'Запросить это проживание',
+  draftStayTitle: 'Забронировать это проживание?',
   draftTitle: 'Забронировать это время?',
   no: 'Нет',
   cancel: 'Отменить',
@@ -574,6 +637,25 @@ const ar: Strings = {
   requestNote: 'سيتم إرسال طلب، وستقوم المنشأة بتأكيده.',
   requestThisTime: 'اطلب هذا الموعد',
   verifyToBook: 'أكّد بياناتك للحجز',
+
+  chooseCheckIn: 'اختر يوم الوصول.',
+  chooseCheckOut: 'اختر الآن يوم المغادرة.',
+  changeCheckIn: 'تغيير يوم الوصول',
+  stayTimes: (checkIn, checkOut) => `الوصول ${checkIn}، المغادرة ${checkOut}`,
+  // ليلة واحدة، ليلتان، 3–10 ليالٍ، 11 ليلة…
+  nights: (count) =>
+    count === 1
+      ? 'ليلة واحدة'
+      : count === 2
+        ? 'ليلتان'
+        : count % 100 >= 3 && count % 100 <= 10
+          ? `${count} ليالٍ`
+          : `${count} ليلة`,
+  stayRange: (shortest, longest) =>
+    shortest === longest ? `الإقامة: ${shortest}.` : `الإقامة: من ${shortest} إلى ${longest}.`,
+  noStayFrom: (day) => `لا يمكن أن تبدأ إقامة يوم ${day}. يُرجى اختيار يوم آخر.`,
+  requestThisStay: 'اطلب هذه الإقامة',
+  draftStayTitle: 'هل تريد حجز هذه الإقامة؟',
   draftTitle: 'هل تريد حجز هذا الموعد؟',
   no: 'لا',
   cancel: 'إلغاء',
@@ -674,6 +756,17 @@ const el: Strings = {
   requestNote: 'Έτσι στέλνετε ένα αίτημα: η επιχείρηση θα το επιβεβαιώσει.',
   requestThisTime: 'Αίτημα για αυτή την ώρα',
   verifyToBook: 'Επαλήθευση στοιχείων για κράτηση',
+
+  chooseCheckIn: 'Επιλέξτε την ημέρα άφιξης.',
+  chooseCheckOut: 'Επιλέξτε τώρα την ημέρα αναχώρησης.',
+  changeCheckIn: 'Αλλαγή ημέρας άφιξης',
+  stayTimes: (checkIn, checkOut) => `Άφιξη ${checkIn}, αναχώρηση ${checkOut}`,
+  nights: (count) => (count === 1 ? '1 νύχτα' : `${count} νύχτες`),
+  stayRange: (shortest, longest) =>
+    shortest === longest ? `Διαμονή: ${shortest}.` : `Διαμονή: από ${shortest} έως ${longest}.`,
+  noStayFrom: (day) => `Καμία διαμονή δεν μπορεί να ξεκινήσει την ${day}. Επιλέξτε άλλη ημέρα.`,
+  requestThisStay: 'Αίτημα για αυτή τη διαμονή',
+  draftStayTitle: 'Κράτηση αυτής της διαμονής;',
   draftTitle: 'Κράτηση αυτής της ώρας;',
   no: 'Όχι',
   cancel: 'Ακύρωση',

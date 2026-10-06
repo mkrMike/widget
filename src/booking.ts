@@ -1,5 +1,5 @@
-import type { BookableResource, ReservationSummary, Slot } from './api'
-import { locale, t } from './i18n'
+import type { BookableResource, ReservationSummary, Slot, StayOptions } from './api'
+import { direction, locale, t } from './i18n'
 
 // Calendar and formatting helpers for the booking panel. Dates are wall-clock
 // strings of the business ("2026-10-02", "2026-10-02T09:00:00"): they are
@@ -14,9 +14,13 @@ export interface BookingState {
   availableDays: string[] | null
   /** The end of the business's booking window, from the backend; null until days were loaded. */
   lastBookableDay: string | null
+  /** The chosen day; the check-in day for a resource booked by the night. */
   date: string | null
   slots: Slot[] | null
   slot: Slot | null
+  /** Booked by the night: the stays that can start on `date`; null until loaded. */
+  stayOptions: StayOptions | null
+  checkOutDay: string | null
 }
 
 export function emptyBooking(): BookingState {
@@ -29,6 +33,8 @@ export function emptyBooking(): BookingState {
     date: null,
     slots: null,
     slot: null,
+    stayOptions: null,
+    checkOutDay: null,
   }
 }
 
@@ -107,12 +113,31 @@ export const formatDayNumber = (date: string) => format('dayNumber').format(utc(
 /** "2026-10-02T09:00:00" → "09:00" or "9:00 AM", as the language writes it. */
 export const formatTime = (dateTime: string) => format('time').format(new Date(`${dateTime.slice(0, 19)}Z`))
 
-/** "Fri, 2 Oct 09:00–09:30" */
-export function formatSlot(slot: Slot): string {
-  return `${formatDay(slot.startAt.slice(0, 10))} ${formatTime(slot.startAt)}–${formatTime(slot.endAt)}`
+/** The nights between two days ("2026-01-05", "2026-01-08" → 3); date-times work too. */
+export function nightsBetween(start: string, end: string): number {
+  return Math.round((utc(end.slice(0, 10)).getTime() - utc(start.slice(0, 10)).getTime()) / 86_400_000)
 }
 
-/** "Dr Lina, Fri, 2 Oct 09:00–09:30" */
+/** A stay's check-in or check-out as a date-time: "2026-01-05", "14:00:00" → "2026-01-05T14:00:00". */
+export const dayAt = (day: string, time: string) => `${day}T${time.length === 5 ? `${time}:00` : time}`
+
+/**
+ * "Fri, 2 Oct 09:00–09:30"; a stay shows both days and its nights:
+ * "Mon, 5 Jan 14:00 → Thu, 8 Jan 11:00 (3 nights)". The backend says which it
+ * is: `nights` is the stay's nights, null (or absent) for a time slot, even one
+ * that ends at midnight on the next day.
+ */
+export function formatSlot(slot: Slot, nights?: number | null): string {
+  const start = `${formatDay(slot.startAt.slice(0, 10))} ${formatTime(slot.startAt)}`
+  if (nights == null) {
+    return `${start}–${formatTime(slot.endAt)}`
+  }
+  // The arrow follows the reading direction.
+  const arrow = direction() === 'rtl' ? '←' : '→'
+  return `${start} ${arrow} ${formatDay(slot.endAt.slice(0, 10))} ${formatTime(slot.endAt)} (${t().nights(nights)})`
+}
+
+/** "Dr Lina, Fri, 2 Oct 09:00–09:30", or a stay with both days and its nights. */
 export function describeReservation(reservation: ReservationSummary): string {
-  return `${reservation.resourceName}${t().separator}${formatSlot(reservation)}`
+  return `${reservation.resourceName}${t().separator}${formatSlot(reservation, reservation.nights)}`
 }

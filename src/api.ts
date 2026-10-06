@@ -8,7 +8,7 @@ export type Channel = 'EMAIL' | 'PHONE'
 /** The assistant asks to open the booking panel, pre-selecting what it knows. */
 export interface BookingForm {
   resourceId: number | null
-  /** "2026-10-02" */
+  /** "2026-10-02"; the check-in day for a resource booked by the night. */
   date: string | null
 }
 
@@ -78,9 +78,13 @@ export interface ChatReply {
 export interface BookingDraft {
   resourceId: number
   resourceName: string
-  /** "2026-10-07T10:00:00" */
+  /** "2026-10-07T10:00:00"; for a stay, the check-in and the check-out. */
   startAt: string
   endAt: string
+  /** A stay: its two days and its nights. Null for a time slot; absent from an older backend. */
+  checkInDay?: string | null
+  checkOutDay?: string | null
+  nights?: number | null
 }
 
 /** One of the customer's bookings, found by the code in their emails. */
@@ -90,6 +94,8 @@ export interface ReservationSummary {
   resourceName: string
   startAt: string
   endAt: string
+  /** The nights of a stay; null for a time slot. Absent from an older backend. */
+  nights?: number | null
   status: ReservationStatus
   cancellable: boolean
 }
@@ -129,19 +135,38 @@ export interface VerifyReply {
   assistantMessageId?: number | null
 }
 
-/** A resource that can be booked (it has opening hours). */
+/**
+ * A resource that can be booked: by time slots (it has opening hours), or by
+ * the night (a stay, from check-in on a day to check-out on a later one).
+ */
 export interface BookableResource {
   id: number
   name: string
   type: string
-  slotMinutes: number
+  /** Absent from an older backend: time slots. */
+  bookingMode?: 'TIME_SLOTS' | 'NIGHTS'
+  /** Null when booked by the night. */
+  slotMinutes: number | null
+  /** Null when booked by time slots. */
+  stay?: Stay | null
+}
+
+/** Times are wall-clock, "14:00:00": check-out is earlier in the day than check-in. */
+export interface Stay {
+  checkInTime: string
+  checkOutTime: string
+  minNights: number
+  maxNights: number
 }
 
 export interface AvailableDays {
   resourceId: number
   /** "2026-10" */
   month: string
-  /** Days with at least one free slot, e.g. "2026-10-02". */
+  /**
+   * Days with at least one free slot, e.g. "2026-10-02"; for a resource booked
+   * by the night, the days a stay can start.
+   */
   days: string[]
   /** The end of the business's booking window, e.g. "2027-01-03": nothing can be booked after it. */
   lastBookableDay: string
@@ -151,6 +176,26 @@ export interface Slot {
   startAt: string
   endAt: string
 }
+
+/** The stays that can start on a day, for a resource booked by the night. */
+export interface StayOptions {
+  resourceId: number
+  /** "2026-01-05" */
+  checkInDay: string
+  checkInTime: string
+  checkOutTime: string
+  minNights: number
+  /** 0, with null check-out days: no stay can start that day. */
+  maxNights: number
+  /** The check-out day can be any day from the first to the last. */
+  firstCheckOutDay: string | null
+  lastCheckOutDay: string | null
+}
+
+/** What to book: a slot by its start, or a stay by its two days. */
+export type BookingRequest =
+  | { resourceId: number; startAt: string }
+  | { resourceId: number; checkInDay: string; checkOutDay: string }
 
 export type ReservationStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED'
 
@@ -263,8 +308,15 @@ export function createApi({ widgetKey, apiUrl }: WidgetConfig) {
     slots: (conversationId: number, accessToken: string, resourceId: number, date: string) =>
       get<Slot[]>(`/${conversationId}/resources/${resourceId}/slots?date=${date}`, accessToken),
 
-    book: (conversationId: number, accessToken: string, resourceId: number, startAt: string) =>
-      post<BookingReply>(`/${conversationId}/reservations`, { resourceId, startAt }, accessToken),
+    /** Only for a resource booked by the night (/slots answers 400 for it). */
+    stayOptions: (conversationId: number, accessToken: string, resourceId: number, checkIn: string) =>
+      get<StayOptions>(
+        `/${conversationId}/resources/${resourceId}/stay-options?checkIn=${checkIn}`,
+        accessToken,
+      ),
+
+    book: (conversationId: number, accessToken: string, booking: BookingRequest) =>
+      post<BookingReply>(`/${conversationId}/reservations`, booking, accessToken),
 
     /** The reservation of the summary card: the same summary back, CANCELLED. */
     cancelByCode: (conversationId: number, accessToken: string, code: string) =>

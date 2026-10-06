@@ -368,6 +368,15 @@ select {
   color: #fff;
 }
 
+/* A stay: its check-in day stays marked while the check-out day is chosen. */
+.day.selected:disabled {
+  opacity: 1;
+}
+
+.day.in-stay {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
 .slots {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
