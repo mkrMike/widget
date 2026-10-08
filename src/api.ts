@@ -85,6 +85,9 @@ export interface BookingDraft {
   checkInDay?: string | null
   checkOutDay?: string | null
   nights?: number | null
+  /** The total it will be quoted at (slot price, or nights x price per night); null without a price. */
+  price?: number | null
+  currency?: string | null
 }
 
 /** One of the customer's bookings, found by the code in their emails. */
@@ -96,6 +99,9 @@ export interface ReservationSummary {
   endAt: string
   /** The nights of a stay; null for a time slot. Absent from an older backend. */
   nights?: number | null
+  /** The total it was quoted at; null (with currency) without a price. */
+  price?: number | null
+  currency?: string | null
   status: ReservationStatus
   cancellable: boolean
 }
@@ -149,7 +155,37 @@ export interface BookableResource {
   slotMinutes: number | null
   /** Null when booked by time slots. */
   stay?: Stay | null
+  /** Per booking (time slots) or per night; null (with currency): no price. */
+  price?: number | null
+  currency?: string | null
+  /** A doctor's specialty, e.g. "DERMATOLOGY"; null for anything else. */
+  specialty?: Specialty | null
 }
+
+export type Specialty =
+  | 'GENERAL_PRACTICE'
+  | 'FAMILY_MEDICINE'
+  | 'INTERNAL_MEDICINE'
+  | 'PEDIATRICS'
+  | 'OBSTETRICS_GYNECOLOGY'
+  | 'DERMATOLOGY'
+  | 'AESTHETIC_MEDICINE'
+  | 'DENTISTRY'
+  | 'ORTHODONTICS'
+  | 'OPHTHALMOLOGY'
+  | 'ENT'
+  | 'CARDIOLOGY'
+  | 'ENDOCRINOLOGY'
+  | 'GASTROENTEROLOGY'
+  | 'NEUROLOGY'
+  | 'ORTHOPEDICS'
+  | 'UROLOGY'
+  | 'PSYCHIATRY'
+  | 'PSYCHOLOGY'
+  | 'PHYSIOTHERAPY'
+  | 'NUTRITION'
+  | 'RADIOLOGY'
+  | 'OTHER'
 
 /** Times are wall-clock, "14:00:00": check-out is earlier in the day than check-in. */
 export interface Stay {

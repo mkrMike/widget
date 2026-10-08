@@ -20,6 +20,8 @@ import {
   currentMonth,
   dayAt,
   describeReservation,
+  describeResource,
+  formatAmount,
   emptyBooking,
   formatDay,
   formatDayNumber,
@@ -29,6 +31,7 @@ import {
   lastBookableMonth,
   monthOf,
   nightsBetween,
+  reservationPrice,
   weekdayInitials,
 } from './booking'
 import { detailsChangedError, type ErrorPlace, isolate, knownError, maskEmail, maskPhone } from './contact'
@@ -1134,13 +1137,14 @@ export class ChatWidget {
     }
   }
 
-  /** Resource, day and times (the business's wall clock), status and code. */
+  /** Resource, day and times (the business's wall clock), quoted price, status and code. */
   private renderSummary(): HTMLElement | null {
     if (!this.summary) {
       return null
     }
     const { reservation, stage } = this.summary
     const texts = t().summary
+    const price = reservationPrice(reservation)
 
     const buttons =
       stage === 'confirm'
@@ -1192,6 +1196,8 @@ export class ChatWidget {
       h('strong', { textContent: texts.title }),
       h('span', { textContent: reservation.resourceName }),
       h('span', { textContent: formatSlot(reservation, reservation.nights) }),
+      // The total it was quoted at, even if the price changed since.
+      price ? h('span', { textContent: price }) : null,
       h('span', {
         className: `status ${reservation.status.toLowerCase()}`,
         textContent: texts.status[reservation.status],
@@ -1229,6 +1235,9 @@ export class ChatWidget {
       h('strong', { textContent: title }),
       h('span', { textContent: draft.resourceName }),
       h('span', { textContent: formatSlot(draft, stay ? draft.nights : null) }),
+      draft.price != null && draft.currency
+        ? h('span', { textContent: formatAmount(draft.price, draft.currency) })
+        : null,
       h('span', { className: 'muted small', textContent: t().requestNote }),
       h(
         'div',
@@ -1506,7 +1515,7 @@ export class ChatWidget {
         ...resources.map((resource) =>
           h('option', {
             value: String(resource.id),
-            textContent: resource.name,
+            textContent: describeResource(resource),
             selected: resource.id === resourceId,
           }),
         ),
@@ -1623,25 +1632,34 @@ export class ChatWidget {
               ),
             )
 
-    const resourceName = resources.find((resource) => resource.id === resourceId)?.name ?? ''
+    const resource = resources.find((candidate) => candidate.id === resourceId)
+    const resourceName = resource?.name ?? ''
     // The stay as a slot: from check-in on the first day to check-out on the last.
     const chosenStay =
       checkOut && stayOptions && checkOutDay
         ? {
             startAt: dayAt(checkOut.checkIn, stayOptions.checkInTime),
             endAt: dayAt(checkOutDay, stayOptions.checkOutTime),
+            nights: nightsBetween(checkOut.checkIn, checkOutDay),
           }
+        : null
+    // Display only: the backend computes the quoted total itself (shown after booking).
+    const stayTotal =
+      chosenStay && resource?.price != null && resource.currency
+        ? formatAmount(Math.round(chosenStay.nights * resource.price * 100) / 100, resource.currency)
         : null
     const chosen = stay ? chosenStay : slot
     const summary = chosen
       ? h(
           'div',
           { className: 'booking-summary' },
-          h('strong', { textContent: `${resourceName}${t().separator}${formatSlot(chosen, chosenStay ? nightsBetween(chosenStay.startAt, chosenStay.endAt) : null)}` }),
+          h('strong', {
+            textContent: `${resourceName}${t().separator}${formatSlot(chosen, chosenStay?.nights ?? null)}`,
+          }),
           chosenStay
             ? h('p', {
                 className: 'small',
-                textContent: `${t().stayTimes(formatTime(chosenStay.startAt), formatTime(chosenStay.endAt))}${t().separator}${t().nights(nightsBetween(chosenStay.startAt, chosenStay.endAt))}`,
+                textContent: `${t().stayTimes(formatTime(chosenStay.startAt), formatTime(chosenStay.endAt))}${t().separator}${t().nights(chosenStay.nights)}${stayTotal ? ` - ${stayTotal}` : ''}`,
               })
             : null,
           h('p', {

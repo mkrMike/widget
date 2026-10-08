@@ -137,7 +137,39 @@ export function formatSlot(slot: Slot, nights?: number | null): string {
   return `${start} ${arrow} ${formatDay(slot.endAt.slice(0, 10))} ${formatTime(slot.endAt)} (${t().nights(nights)})`
 }
 
-/** "Dr Lina, Fri, 2 Oct 09:00–09:30", or a stay with both days and its nights. */
+/**
+ * An amount with 2 decimals and the currency code after it: "350.00 AED".
+ * Latin digits and no thousands separator in every language.
+ */
+export const formatAmount = (amount: number, currency: string) => `${amount.toFixed(2)} ${currency}`
+
+/** The quoted total of a reservation, or null without a price. */
+export function reservationPrice(reservation: ReservationSummary): string | null {
+  return reservation.price != null && reservation.currency ? formatAmount(reservation.price, reservation.currency) : null
+}
+
+/**
+ * A resource in the choice: "Dr Lina - Dermatology - 350.00 AED",
+ * "Palm villa - 799.50 AED / night"; without a price, nothing about it.
+ */
+export function describeResource(resource: BookableResource): string {
+  const parts = [resource.name]
+  if (resource.specialty) {
+    parts.push(t().specialties[resource.specialty])
+  }
+  if (resource.price != null && resource.currency) {
+    const amount = formatAmount(resource.price, resource.currency)
+    parts.push(resource.bookingMode === 'NIGHTS' ? `${amount} ${t().perNight}` : amount)
+  }
+  return parts.join(' - ')
+}
+
+/**
+ * "Dr Lina, Fri, 2 Oct 09:00–09:30", or a stay with both days and its nights;
+ * with the quoted total after it: "... (3 nights) - 2398.50 AED".
+ */
 export function describeReservation(reservation: ReservationSummary): string {
-  return `${reservation.resourceName}${t().separator}${formatSlot(reservation, reservation.nights)}`
+  const price = reservationPrice(reservation)
+  const slot = `${reservation.resourceName}${t().separator}${formatSlot(reservation, reservation.nights)}`
+  return price ? `${slot} - ${price}` : slot
 }
