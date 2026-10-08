@@ -28,6 +28,9 @@ export interface Strings {
   /** Header button back from the booking panel; the arrow follows the reading direction. */
   backToChat: string
   greeting: string
+  /** GDPR notice under the input: AI processing disclosure, then the privacy-policy link. */
+  aiNotice: string
+  privacyPolicy: string
   notSent: string
   messagePlaceholder: string
   send: string
@@ -145,6 +148,8 @@ const en: Strings = {
   book: 'Book',
   backToChat: '← Chat',
   greeting: 'Hi! How can we help you today?',
+  aiNotice: 'This chat is answered by an AI assistant.',
+  privacyPolicy: 'Privacy policy',
   notSent: 'Not sent',
   messagePlaceholder: 'Type your message…',
   send: 'Send',
@@ -282,6 +287,8 @@ const fr: Strings = {
   book: 'Réserver',
   backToChat: '← Chat',
   greeting: 'Bonjour ! Comment pouvons-nous vous aider ?',
+  aiNotice: 'Ce chat est animé par un assistant IA.',
+  privacyPolicy: 'Politique de confidentialité',
   notSent: 'Non envoyé',
   messagePlaceholder: 'Écrivez votre message…',
   send: 'Envoyer',
@@ -420,6 +427,8 @@ const es: Strings = {
   book: 'Reservar',
   backToChat: '← Chat',
   greeting: '¡Hola! ¿En qué podemos ayudarte?',
+  aiNotice: 'Este chat lo atiende un asistente de IA.',
+  privacyPolicy: 'Política de privacidad',
   notSent: 'No enviado',
   messagePlaceholder: 'Escribe tu mensaje…',
   send: 'Enviar',
@@ -558,6 +567,8 @@ const ru: Strings = {
   book: 'Забронировать',
   backToChat: '← Чат',
   greeting: 'Здравствуйте! Чем мы можем помочь?',
+  aiNotice: 'В этом чате отвечает ИИ-ассистент.',
+  privacyPolicy: 'Политика конфиденциальности',
   notSent: 'Не отправлено',
   messagePlaceholder: 'Введите сообщение…',
   send: 'Отправить',
@@ -701,6 +712,8 @@ const ar: Strings = {
   book: 'احجز',
   backToChat: '→ المحادثة',
   greeting: 'مرحبًا! كيف يمكننا مساعدتك اليوم؟',
+  aiNotice: 'يتولى الرد في هذه المحادثة مساعد ذكاء اصطناعي.',
+  privacyPolicy: 'سياسة الخصوصية',
   notSent: 'لم تُرسل',
   messagePlaceholder: 'اكتب رسالتك…',
   send: 'إرسال',
@@ -849,6 +862,8 @@ const el: Strings = {
   book: 'Κράτηση',
   backToChat: '← Συνομιλία',
   greeting: 'Γεια σας! Πώς μπορούμε να σας βοηθήσουμε σήμερα;',
+  aiNotice: 'Σε αυτή τη συνομιλία απαντά ένας βοηθός AI.',
+  privacyPolicy: 'Πολιτική απορρήτου',
   notSent: 'Δεν στάλθηκε',
   messagePlaceholder: 'Γράψτε το μήνυμά σας…',
   send: 'Αποστολή',

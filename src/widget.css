@@ -180,6 +180,16 @@ textarea {
   font-size: 0.8rem;
 }
 
+.ai-notice {
+  text-align: center;
+  font-size: 0.72rem;
+}
+
+.ai-notice a {
+  color: inherit;
+  text-decoration: underline;
+}
+
 .form-buttons {
   display: flex;
   gap: 0.5rem;

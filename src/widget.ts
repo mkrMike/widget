@@ -1127,6 +1127,18 @@ export class ChatWidget {
         this.renderSummary(),
         this.renderDraft(),
         this.renderMessageForm(),
+        // GDPR: the AI processing disclosure, where patients actually chat.
+        h(
+          'p',
+          { className: 'info ai-notice' },
+          `${t().aiNotice} `,
+          h('a', {
+            href: `https://samatrica.com/${language()}/privacy/`,
+            target: '_blank',
+            rel: 'noopener',
+            textContent: t().privacyPolicy,
+          }),
+        ),
       ),
     )
 
