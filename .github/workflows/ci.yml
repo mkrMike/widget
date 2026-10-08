@@ -1,12 +1,12 @@
-# Continuous integration: every push and pull request is linted, type-checked
+﻿# Continuous integration: every push and pull request is linted, type-checked
 # and built. A red result means: do not merge.
 name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
-    branches: [main]
+    branches: [master]
 
 # A newer push on the same branch cancels the run still going for the older one.
 concurrency:
