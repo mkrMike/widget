@@ -7,6 +7,7 @@ export type FormError =
   | 'phoneRequired'
   | 'invalidEmail'
   | 'invalidPhone'
+  | 'phoneAlreadyUsed'
   | 'invalidCode'
   | 'codeExpired'
   | 'tooManyAttempts'
@@ -170,6 +171,7 @@ const en: Strings = {
     phoneRequired: 'Please enter your phone number.',
     invalidEmail: 'This email address is not valid.',
     invalidPhone: 'This phone number is not valid.',
+    phoneAlreadyUsed: 'This phone number is already used by another customer. Please use a different number.',
     invalidCode: 'This code is not correct.',
     codeExpired: 'This code has expired. Use “Resend code” to get a new one.',
     tooManyAttempts: 'Too many wrong codes. Use “Resend code” to get a new one.',
@@ -306,6 +308,7 @@ const fr: Strings = {
     phoneRequired: 'Veuillez saisir votre numéro de téléphone.',
     invalidEmail: 'Cette adresse e-mail n’est pas valide.',
     invalidPhone: 'Ce numéro de téléphone n’est pas valide.',
+    phoneAlreadyUsed: 'Ce numéro de téléphone est déjà utilisé par un autre client. Veuillez saisir un autre numéro.',
     invalidCode: 'Ce code est incorrect.',
     codeExpired: 'Ce code a expiré. Utilisez « Renvoyer le code » pour en recevoir un nouveau.',
     tooManyAttempts: 'Trop de codes incorrects. Utilisez « Renvoyer le code » pour en recevoir un nouveau.',
@@ -442,6 +445,7 @@ const es: Strings = {
     phoneRequired: 'Introduce tu número de teléfono.',
     invalidEmail: 'Este correo electrónico no es válido.',
     invalidPhone: 'Este número de teléfono no es válido.',
+    phoneAlreadyUsed: 'Este número de teléfono ya lo usa otro cliente. Introduzca otro número.',
     invalidCode: 'El código no es correcto.',
     codeExpired: 'Este código ha caducado. Usa «Reenviar código» para recibir uno nuevo.',
     tooManyAttempts: 'Demasiados códigos incorrectos. Usa «Reenviar código» para recibir uno nuevo.',
@@ -578,6 +582,7 @@ const ru: Strings = {
     phoneRequired: 'Введите номер телефона.',
     invalidEmail: 'Неверный адрес электронной почты.',
     invalidPhone: 'Неверный номер телефона.',
+    phoneAlreadyUsed: 'Этот номер телефона уже используется другим клиентом. Укажите другой номер.',
     invalidCode: 'Неверный код.',
     codeExpired: 'Срок действия кода истёк. Нажмите «Отправить код повторно», чтобы получить новый.',
     tooManyAttempts: 'Слишком много неверных кодов. Нажмите «Отправить код повторно», чтобы получить новый.',
@@ -720,6 +725,7 @@ const ar: Strings = {
     phoneRequired: 'يُرجى إدخال رقم هاتفك.',
     invalidEmail: 'عنوان البريد الإلكتروني غير صالح.',
     invalidPhone: 'رقم الهاتف غير صالح.',
+    phoneAlreadyUsed: 'رقم الهاتف هذا مستخدم من قبل عميل آخر. يرجى إدخال رقم آخر.',
     invalidCode: 'الرمز غير صحيح.',
     codeExpired: 'انتهت صلاحية هذا الرمز. استخدم «إعادة إرسال الرمز» للحصول على رمز جديد.',
     tooManyAttempts: 'رموز غير صحيحة كثيرة جدًا. استخدم «إعادة إرسال الرمز» للحصول على رمز جديد.',
@@ -866,6 +872,7 @@ const el: Strings = {
     phoneRequired: 'Συμπληρώστε τον αριθμό τηλεφώνου σας.',
     invalidEmail: 'Η διεύθυνση email δεν είναι έγκυρη.',
     invalidPhone: 'Ο αριθμός τηλεφώνου δεν είναι έγκυρος.',
+    phoneAlreadyUsed: 'Αυτός ο αριθμός τηλεφώνου χρησιμοποιείται ήδη από άλλον πελάτη. Εισαγάγετε άλλον αριθμό.',
     invalidCode: 'Ο κωδικός δεν είναι σωστός.',
     codeExpired: 'Ο κωδικός έληξε. Πατήστε «Νέα αποστολή κωδικού» για να λάβετε νέο.',
     tooManyAttempts: 'Πάρα πολλοί λανθασμένοι κωδικοί. Πατήστε «Νέα αποστολή κωδικού» για να λάβετε νέο.',

@@ -37,6 +37,7 @@ export const detailsChangedError = 'No verification code expected'
 /** The backend's 400 messages that have a translation, and their field. */
 const knownErrors: Record<string, [FormError, ErrorPlace]> = {
   'Invalid phone number': ['invalidPhone', 'phone'],
+  'This phone number is already used by another customer': ['phoneAlreadyUsed', 'phone'],
   'Invalid verification code': ['invalidCode', 'code'],
   'Verification code has expired': ['codeExpired', 'code'],
   'Maximum verification attempts exceeded': ['tooManyAttempts', 'code'],

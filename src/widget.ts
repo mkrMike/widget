@@ -483,6 +483,15 @@ export class ChatWidget {
     if (key === 'tooManyCodes') {
       this.resendBlocked = true
     }
+    // The number belongs to another customer; at the code step the phone is
+    // not editable, so back to the contact form to change it.
+    if (key === 'phoneAlreadyUsed' && place === 'code') {
+      this.confirmAgain()
+      this.chat.contactLocked = false
+      this.info = null
+      this.fieldErrors = { phone: t().formErrors.phoneAlreadyUsed }
+      return true
+    }
     // In the contact step, a code error (too many codes) goes above the buttons.
     this.fieldErrors[place === 'code' ? 'code' : field === 'code' ? 'form' : field] =
       key ? t().formErrors[key] : sent
