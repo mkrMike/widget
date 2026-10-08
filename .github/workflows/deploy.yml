@@ -22,9 +22,9 @@ permissions:
 
 env:
   AWS_REGION: eu-central-1
-  S3_BUCKET: TODO-bucket-from-backend
-  CLOUDFRONT_DISTRIBUTION_ID: TODO-distribution-id-from-backend
-  DEPLOY_ROLE_ARN: TODO-role-arn-from-backend
+  S3_BUCKET: samatrica-widget
+  CLOUDFRONT_DISTRIBUTION_ID: E255XROLPBBQHG
+  DEPLOY_ROLE_ARN: arn:aws:iam::398861426326:role/github-widget-deploy
 
 jobs:
   deploy:
