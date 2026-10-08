@@ -126,6 +126,8 @@ export class ChatWidget {
   private live: LiveStream | null = null
   /** The conversation and token the live stream is open for. */
   private liveKey: string | null = null
+  /** False while the live stream is down and retrying: the quiet status line. */
+  private liveConnected = true
 
   constructor(api: Api, widgetKey: string) {
     this.api = api
@@ -895,6 +897,7 @@ export class ChatWidget {
     this.live?.stop()
     this.live = null
     this.liveKey = key
+    this.liveConnected = true
     if (conversationId === null || accessToken === null) {
       return
     }
@@ -903,6 +906,12 @@ export class ChatWidget {
       url: this.api.eventsUrl(conversationId),
       headers: { 'X-Conversation-Access-Token': accessToken },
       onEvent: (event) => this.onLiveEvent(event.data),
+      onConnectionChange: (connected) => {
+        if (this.liveConnected !== connected && this.chat.accessToken === accessToken) {
+          this.liveConnected = connected
+          this.render()
+        }
+      },
       onError: (error) => {
         const apiError = new ApiError(error.status, error.message, null)
         if (!apiError.sessionExpired) {
@@ -1066,7 +1075,10 @@ export class ChatWidget {
 
     const errorLine = this.error
       ? h('p', { className: 'error', role: 'alert', textContent: this.error })
-      : null
+      : !this.liveConnected
+        ? // The live stream retries on its own: a quiet note, not an alert.
+          h('p', { className: 'info', role: 'status', textContent: t().connectionRetrying })
+        : null
 
     if (this.view === 'booking') {
       const body = this.renderBooking()

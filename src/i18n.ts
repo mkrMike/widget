@@ -66,6 +66,8 @@ export interface Strings {
   tooManyRequestsIn: (seconds: number) => string
   tooManyRequests: string
   connectionError: string
+  /** The live stream is down and reconnecting: a quiet status line, not an alert. */
+  connectionRetrying: string
   /** A 5xx, e.g. the assistant timed out. */
   serverError: string
   chatEnded: string
@@ -187,6 +189,7 @@ const en: Strings = {
   tooManyRequestsIn: (seconds) => `Too many requests. Please try again in ${seconds} seconds.`,
   tooManyRequests: 'Too many requests. Please try again in a moment.',
   connectionError: 'Could not reach the chat. Please check your connection and try again.',
+  connectionRetrying: 'Connection lost. Reconnecting…',
   serverError: 'Something went wrong on our side. Please try again.',
   chatEnded: 'This chat has ended. Send a message to start a new one.',
   previousChatEnded: 'Previous conversation ended',
@@ -324,6 +327,7 @@ const fr: Strings = {
   tooManyRequestsIn: (seconds) => `Trop de demandes. Veuillez réessayer dans ${seconds} secondes.`,
   tooManyRequests: 'Trop de demandes. Veuillez réessayer dans un instant.',
   connectionError: 'Impossible de joindre le chat. Vérifiez votre connexion et réessayez.',
+  connectionRetrying: 'Connexion perdue. Reconnexion…',
   serverError: 'Un problème est survenu de notre côté. Veuillez réessayer.',
   chatEnded: 'Cette conversation est terminée. Envoyez un message pour en commencer une nouvelle.',
   previousChatEnded: 'Conversation précédente terminée',
@@ -461,6 +465,7 @@ const es: Strings = {
   tooManyRequestsIn: (seconds) => `Demasiadas solicitudes. Inténtalo de nuevo en ${seconds} segundos.`,
   tooManyRequests: 'Demasiadas solicitudes. Inténtalo de nuevo en un momento.',
   connectionError: 'No se pudo conectar con el chat. Comprueba tu conexión e inténtalo de nuevo.',
+  connectionRetrying: 'Conexión perdida. Reconectando…',
   serverError: 'Algo ha fallado por nuestra parte. Inténtalo de nuevo.',
   chatEnded: 'Este chat ha terminado. Envía un mensaje para empezar uno nuevo.',
   previousChatEnded: 'Conversación anterior finalizada',
@@ -599,6 +604,7 @@ const ru: Strings = {
   tooManyRequestsIn: (seconds) => `Слишком много запросов. Повторите попытку через ${seconds} с.`,
   tooManyRequests: 'Слишком много запросов. Повторите попытку чуть позже.',
   connectionError: 'Не удалось подключиться к чату. Проверьте соединение и повторите попытку.',
+  connectionRetrying: 'Соединение потеряно. Переподключение…',
   serverError: 'На нашей стороне что-то пошло не так. Повторите попытку.',
   chatEnded: 'Этот чат завершён. Отправьте сообщение, чтобы начать новый.',
   previousChatEnded: 'Предыдущий разговор завершён',
@@ -741,6 +747,7 @@ const ar: Strings = {
   tooManyRequestsIn: (seconds) => `طلبات كثيرة جدًا. يُرجى المحاولة مرة أخرى بعد ${seconds} ثانية.`,
   tooManyRequests: 'طلبات كثيرة جدًا. يُرجى المحاولة مرة أخرى بعد قليل.',
   connectionError: 'تعذّر الاتصال بالمحادثة. يُرجى التحقق من اتصالك والمحاولة مرة أخرى.',
+  connectionRetrying: 'انقطع الاتصال. تتم إعادة المحاولة…',
   serverError: 'حدث خطأ من جهتنا. يُرجى المحاولة مرة أخرى.',
   chatEnded: 'انتهت هذه المحادثة. أرسل رسالة لبدء محادثة جديدة.',
   previousChatEnded: 'انتهت المحادثة السابقة',
@@ -888,6 +895,7 @@ const el: Strings = {
   tooManyRequestsIn: (seconds) => `Πάρα πολλά αιτήματα. Δοκιμάστε ξανά σε ${seconds} δευτερόλεπτα.`,
   tooManyRequests: 'Πάρα πολλά αιτήματα. Δοκιμάστε ξανά σε λίγο.',
   connectionError: 'Δεν ήταν δυνατή η σύνδεση με τη συνομιλία. Ελέγξτε τη σύνδεσή σας και δοκιμάστε ξανά.',
+  connectionRetrying: 'Η σύνδεση χάθηκε. Επανασύνδεση…',
   serverError: 'Κάτι πήγε στραβά από την πλευρά μας. Δοκιμάστε ξανά.',
   chatEnded: 'Αυτή η συνομιλία έληξε. Στείλτε ένα μήνυμα για να ξεκινήσετε νέα.',
   previousChatEnded: 'Η προηγούμενη συνομιλία έληξε',

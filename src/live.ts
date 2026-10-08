@@ -21,6 +21,8 @@ interface LiveStreamOptions {
   onEvent: (event: LiveEvent) => void
   /** An HTTP error: return false to stop for good (e.g. the token is no longer valid). */
   onError: (error: LiveStreamError) => boolean
+  /** false after a drop or failed attempt, true once (re)connected. */
+  onConnectionChange?: (connected: boolean) => void
 }
 
 const retryDelays = [1, 2, 5, 10, 30]
@@ -43,7 +45,9 @@ export class LiveStream {
     while (!this.abort.signal.aborted) {
       try {
         await this.connect()
+        this.options.onConnectionChange?.(false)
       } catch (error) {
+        this.options.onConnectionChange?.(false)
         if (this.abort.signal.aborted) {
           return
         }
@@ -72,6 +76,7 @@ export class LiveStream {
     }
 
     this.failures = 0
+    this.options.onConnectionChange?.(true)
     const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
     let buffer = ''
 
