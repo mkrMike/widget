@@ -5,11 +5,16 @@ import type { WidgetConfig } from './config'
 
 export type Channel = 'EMAIL' | 'PHONE'
 
-/** The assistant asks to open the booking panel, pre-selecting what it knows. */
+/**
+ * The assistant asks to open the booking panel, pre-selecting what it knows:
+ * a service (resourceId is then its performer, null: anyone), or a stay resource.
+ */
 export interface BookingForm {
   resourceId: number | null
   /** "2026-10-02"; the check-in day for a resource booked by the night. */
   date: string | null
+  /** Absent from an older backend (and from a form stored by an older widget). */
+  serviceId?: number | null
 }
 
 /** Who answers the visitor: the assistant, or an employee (requested or joined). */
@@ -74,18 +79,24 @@ export interface ChatReply {
   bookingDraft?: BookingDraft | null
 }
 
-/** A booking the assistant prepared in the chat; the visitor confirms or edits it. */
+/**
+ * A booking the assistant prepared in the chat; the visitor confirms or edits
+ * it. A service (serviceId set) or a stay.
+ */
 export interface BookingDraft {
-  resourceId: number
-  resourceName: string
+  /** Null for a service anyone may perform. */
+  resourceId: number | null
+  resourceName: string | null
+  serviceId?: number | null
+  serviceName?: string | null
   /** "2026-10-07T10:00:00"; for a stay, the check-in and the check-out. */
   startAt: string
   endAt: string
-  /** A stay: its two days and its nights. Null for a time slot; absent from an older backend. */
+  /** A stay: its two days and its nights. Null for a service. */
   checkInDay?: string | null
   checkOutDay?: string | null
   nights?: number | null
-  /** The total it will be quoted at (slot price, or nights x price per night); null without a price. */
+  /** The total it will be quoted at (the service's price, or nights x price per night); null without a price. */
   price?: number | null
   currency?: string | null
 }
@@ -94,7 +105,10 @@ export interface BookingDraft {
 export interface ReservationSummary {
   /** "K7QM-2X9P" */
   code: string
+  /** Who performs the service, or the stay's resource. */
   resourceName: string
+  /** Null for a stay. */
+  serviceName?: string | null
   startAt: string
   endAt: string
   /** The nights of a stay; null for a time slot. Absent from an older backend. */
@@ -142,24 +156,47 @@ export interface VerifyReply {
 }
 
 /**
- * A resource that can be booked: by time slots (it has opening hours), or by
- * the night (a stay, from check-in on a day to check-out on a later one).
+ * A resource booked on its own: only by the night (a stay, from check-in on a
+ * day to check-out on a later one). One booked by time slots (a hairdresser, a
+ * doctor) is booked through its services instead.
  */
 export interface BookableResource {
   id: number
   name: string
   type: string
-  /** Absent from an older backend: time slots. */
   bookingMode?: 'TIME_SLOTS' | 'NIGHTS'
-  /** Null when booked by the night. */
-  slotMinutes: number | null
-  /** Null when booked by time slots. */
   stay?: Stay | null
-  /** Per booking (time slots) or per night; null (with currency): no price. */
+  /** Per night; null (with currency): no price. */
   price?: number | null
   currency?: string | null
-  /** A doctor's specialty, e.g. "DERMATOLOGY"; null for anything else. */
   specialty?: Specialty | null
+}
+
+/** A service someone can perform now (a haircut, a consultation). */
+export interface Service {
+  id: number
+  name: string
+  durationMinutes: number
+  /** Null (with currency): no price. */
+  price: number | null
+  currency: string | null
+  description: string | null
+  /** Who performs it, sorted by name; never empty. */
+  performers: Performer[]
+}
+
+export interface Performer {
+  id: number
+  name: string
+}
+
+/** The days a service can start, with one performer or anyone (resourceId null). */
+export interface ServiceAvailableDays {
+  serviceId: number
+  resourceId: number | null
+  month: string
+  days: string[]
+  lastBookableDay: string
 }
 
 export type Specialty =
@@ -228,9 +265,12 @@ export interface StayOptions {
   lastCheckOutDay: string | null
 }
 
-/** What to book: a slot by its start, or a stay by its two days. */
+/**
+ * What to book: a service by its start (without resourceId: anyone, the
+ * backend picks the performer), or a stay by its two days.
+ */
 export type BookingRequest =
-  | { resourceId: number; startAt: string }
+  | { serviceId: number; resourceId?: number; startAt: string }
   | { resourceId: number; checkInDay: string; checkOutDay: string }
 
 export type ReservationStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED'
@@ -332,6 +372,36 @@ export function createApi({ widgetKey, apiUrl }: WidgetConfig) {
     // Booking panel. Browsing works while anonymous; booking answers 403 until
     // the visitor is verified. Existing bookings are only reached by their code.
 
+    services: (conversationId: number, accessToken: string) =>
+      get<Service[]>(`/${conversationId}/services`, accessToken),
+
+    /** resourceId: one performer; null: anyone who performs it. */
+    serviceAvailableDays: (
+      conversationId: number,
+      accessToken: string,
+      serviceId: number,
+      resourceId: number | null,
+      month: string,
+    ) =>
+      get<ServiceAvailableDays>(
+        `/${conversationId}/services/${serviceId}/available-days?month=${month}${performerParam(resourceId)}`,
+        accessToken,
+      ),
+
+    /** The free starts of a day, each lasting the service's duration. */
+    serviceStarts: (
+      conversationId: number,
+      accessToken: string,
+      serviceId: number,
+      resourceId: number | null,
+      date: string,
+    ) =>
+      get<Slot[]>(
+        `/${conversationId}/services/${serviceId}/starts?date=${date}${performerParam(resourceId)}`,
+        accessToken,
+      ),
+
+    /** Only the resources booked by the night. */
     resources: (conversationId: number, accessToken: string) =>
       get<BookableResource[]>(`/${conversationId}/resources`, accessToken),
 
@@ -341,10 +411,6 @@ export function createApi({ widgetKey, apiUrl }: WidgetConfig) {
         accessToken,
       ),
 
-    slots: (conversationId: number, accessToken: string, resourceId: number, date: string) =>
-      get<Slot[]>(`/${conversationId}/resources/${resourceId}/slots?date=${date}`, accessToken),
-
-    /** Only for a resource booked by the night (/slots answers 400 for it). */
     stayOptions: (conversationId: number, accessToken: string, resourceId: number, checkIn: string) =>
       get<StayOptions>(
         `/${conversationId}/resources/${resourceId}/stay-options?checkIn=${checkIn}`,
@@ -364,6 +430,8 @@ export function createApi({ widgetKey, apiUrl }: WidgetConfig) {
       ),
   }
 }
+
+const performerParam = (resourceId: number | null) => (resourceId === null ? '' : `&resourceId=${resourceId}`)
 
 async function errorMessage(response: Response): Promise<string> {
   try {

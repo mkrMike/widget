@@ -41,13 +41,21 @@ and the next message starts a new one.
 
 Only the visitor books or cancels; the assistant prepares or opens:
 
-- **Booking form card** (`bookingDraft`): the resource, day and time the
-  assistant collected in the chat (a free slot), read-only. **Confirm** books
+- **Booking form card** (`bookingDraft`): the service and who performs it
+  ("Colour with Anna", or "with anyone available"), or the stay, with the day
+  and time the assistant collected in the chat, read-only. **Confirm** books
   it; **Edit** opens the panel on that day with the time selected. Every reply
   carries the draft as it is now: null hides the card.
 - **Booking panel** (`bookingForm`, or the **Book** button in the header):
-  resource, month calendar (days with free slots), the day's free times, then
-  "Request this time".
+  one choice of the services (`/services`) and the stays (`/resources`, only
+  resources booked by the night), grouped when there are both.
+  - A service: who performs it ("Anyone" by default; no choice with one
+    performer), the month calendar (`available-days`), the day's free starts
+    (`starts`), then "Request this time". Anyone: the backend picks who.
+  - A stay: the check-in day, the check-out day, then "Request this stay".
+
+  A resource booked by time slots (a hairdresser, a doctor) is only booked
+  through its services.
 
 A booking is a request awaiting the business's confirmation; the "Request sent" line in the chat
 shows its booking code. If the time was taken meanwhile, the panel opens

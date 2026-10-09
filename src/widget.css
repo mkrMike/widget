@@ -327,6 +327,12 @@ button.danger {
   color: var(--muted);
 }
 
+/* Under the chosen service, close to it. */
+.booking-body .description {
+  margin: -0.4rem 0 0;
+  white-space: pre-wrap;
+}
+
 select {
   font: inherit;
   color: inherit;

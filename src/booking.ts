@@ -1,21 +1,29 @@
-import type { BookableResource, ReservationSummary, Slot, StayOptions } from './api'
+import type { BookableResource, ReservationSummary, Service, Slot, StayOptions } from './api'
 import { direction, locale, t } from './i18n'
 
 // Calendar and formatting helpers for the booking panel. Dates are wall-clock
 // strings of the business ("2026-10-02", "2026-10-02T09:00:00"): they are
 // handled as UTC so that the visitor's own time zone never shifts them.
 
+/**
+ * What is booked: a service (serviceId set; resourceId is then the chosen
+ * performer, null: anyone), or a stay (serviceId null, resourceId the resource).
+ */
 export interface BookingState {
+  services: Service[] | null
+  /** The resources booked by the night. */
   resources: BookableResource[] | null
+  serviceId: number | null
   resourceId: number | null
   /** "2026-10" */
   month: string
-  /** For resourceId and month; null while loading. */
+  /** For the choice and month; null while loading. */
   availableDays: string[] | null
   /** The end of the business's booking window, from the backend; null until days were loaded. */
   lastBookableDay: string | null
   /** The chosen day; the check-in day for a resource booked by the night. */
   date: string | null
+  /** A service's free starts on `date`. */
   slots: Slot[] | null
   slot: Slot | null
   /** Booked by the night: the stays that can start on `date`; null until loaded. */
@@ -25,7 +33,9 @@ export interface BookingState {
 
 export function emptyBooking(): BookingState {
   return {
+    services: null,
     resources: null,
+    serviceId: null,
     resourceId: null,
     month: currentMonth(),
     availableDays: null,
@@ -164,12 +174,28 @@ export function describeResource(resource: BookableResource): string {
   return parts.join(' - ')
 }
 
+/** A service in the choice: "Colour - 1 h 30 min - 120.00 AED"; without a price, nothing about it. */
+export function describeService(service: Service): string {
+  const parts = [service.name, t().duration(service.durationMinutes)]
+  if (service.price != null && service.currency) {
+    parts.push(formatAmount(service.price, service.currency))
+  }
+  return parts.join(' - ')
+}
+
+/** "Colour with Anna", or the stay's resource ("Palm villa") without a service. */
+export function reservationTitle(reservation: Pick<ReservationSummary, 'resourceName' | 'serviceName'>): string {
+  return reservation.serviceName
+    ? t().serviceWith(reservation.serviceName, reservation.resourceName)
+    : reservation.resourceName
+}
+
 /**
- * "Dr Lina, Fri, 2 Oct 09:00–09:30", or a stay with both days and its nights;
- * with the quoted total after it: "... (3 nights) - 2398.50 AED".
+ * "Colour with Anna, Fri, 2 Oct 09:00–10:30", or a stay with both days and its
+ * nights; with the quoted total after it: "... (3 nights) - 2398.50 AED".
  */
 export function describeReservation(reservation: ReservationSummary): string {
   const price = reservationPrice(reservation)
-  const slot = `${reservation.resourceName}${t().separator}${formatSlot(reservation, reservation.nights)}`
+  const slot = `${reservationTitle(reservation)}${t().separator}${formatSlot(reservation, reservation.nights)}`
   return price ? `${slot} - ${price}` : slot
 }

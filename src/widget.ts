@@ -11,6 +11,7 @@ import {
   type ConversationMode,
   type LiveEventData,
   type ReservationSummary,
+  type Service,
   type Slot,
 } from './api'
 import {
@@ -21,6 +22,7 @@ import {
   dayAt,
   describeReservation,
   describeResource,
+  describeService,
   formatAmount,
   emptyBooking,
   formatDay,
@@ -32,6 +34,7 @@ import {
   monthOf,
   nightsBetween,
   reservationPrice,
+  reservationTitle,
   weekdayInitials,
 } from './booking'
 import { detailsChangedError, type ErrorPlace, isolate, knownError, maskEmail, maskPhone } from './contact'
@@ -46,9 +49,19 @@ const contactFields: (keyof ContactDetails)[] = ['firstName', 'lastName', 'email
 /** "Resend code" is active this long after a code was sent. */
 const resendDelayMs = 30_000
 
-/** The day the booking panel reopens on: the slot's, or the stay's check-in day. */
-const bookingDay = (booking: BookingRequest) =>
-  'startAt' in booking ? booking.startAt.slice(0, 10) : booking.checkInDay
+/** The booking panel reopens on the same service or stay, on the start's or the check-in day. */
+const bookingFormOf = (booking: BookingRequest): BookingForm =>
+  'serviceId' in booking
+    ? { serviceId: booking.serviceId, resourceId: booking.resourceId ?? null, date: booking.startAt.slice(0, 10) }
+    : { serviceId: null, resourceId: booking.resourceId, date: booking.checkInDay }
+
+/** Values of the "What would you like to book?" choice. */
+const serviceChoice = (serviceId: number) => `service:${serviceId}`
+const stayChoice = (resourceId: number) => `stay:${resourceId}`
+
+/** A service with one performer, or anyone (no resourceId: the backend picks who). */
+const serviceBooking = (serviceId: number, resourceId: number | null, startAt: string): BookingRequest =>
+  resourceId === null ? { serviceId, startAt } : { serviceId, resourceId, startAt }
 
 const senderFrom: Record<string, ChatMessage['from']> = {
   CUSTOMER: 'visitor',
@@ -546,8 +559,9 @@ export class ChatWidget {
   // Booking panel
 
   /**
-   * Opens the panel, pre-selecting the resource and day when given, the time
-   * if it is still free, and showing why the panel opened (a refused booking).
+   * Opens the panel, pre-selecting the service (and its performer) or the stay
+   * and the day when given, the time if it is still free, and showing why the
+   * panel opened (a refused booking). Without a choice, the previous one stays.
    */
   private openBooking(
     form?: BookingForm,
@@ -559,21 +573,26 @@ export class ChatWidget {
 
     this.open = true
     this.view = 'booking'
+    const serviceId = form?.serviceId ?? null
+    const chosen = serviceId !== null || form?.resourceId != null
     this.booking = {
       ...emptyBooking(),
+      services: this.booking.services,
       resources: this.booking.resources,
-      resourceId: form?.resourceId ?? this.booking.resourceId,
+      serviceId: chosen ? serviceId : this.booking.serviceId,
+      resourceId: chosen ? (form?.resourceId ?? null) : this.booking.resourceId,
       date: form?.date ?? null,
       month: form?.date ? monthOf(form.date) : currentMonth(),
     }
 
     void this.run(async () => {
-      const resources = await this.api.resources(...this.session())
+      const [services, resources] = await Promise.all([
+        this.api.services(...this.session()),
+        this.api.resources(...this.session()),
+      ])
+      this.booking.services = services
       this.booking.resources = resources
-      // Pre-selected by the assistant but not bookable (any more): choose again.
-      if (!resources.some((resource) => resource.id === this.booking.resourceId)) {
-        this.booking = { ...this.booking, resourceId: null, date: null }
-      }
+      this.keepBookableChoice()
       await this.loadDaysAndSlots()
       const { startAt, checkOutDay, error } = options
       if (startAt) {
@@ -597,8 +616,35 @@ export class ChatWidget {
     })
   }
 
+  /** Pre-selected by the assistant (or earlier) but not bookable any more: choose again. */
+  private keepBookableChoice() {
+    if (this.booking.serviceId === null) {
+      if (!this.selectedResource()) {
+        this.booking = { ...this.booking, resourceId: null, date: null }
+      }
+      return
+    }
+    const service = this.selectedService()
+    if (!service) {
+      this.booking = { ...this.booking, serviceId: null, resourceId: null, date: null }
+    } else if (!service.performers.some((performer) => performer.id === this.booking.resourceId)) {
+      // Nobody chosen, or someone who no longer performs it: anyone.
+      this.booking.resourceId = null
+    }
+  }
+
   private async loadDaysAndSlots() {
-    const { resourceId, month, date } = this.booking
+    const { serviceId, resourceId, month, date } = this.booking
+    // A service: its days and starts, with the chosen performer or anyone.
+    if (serviceId !== null) {
+      const days = await this.api.serviceAvailableDays(...this.session(), serviceId, resourceId, month)
+      this.booking.availableDays = days.days
+      this.booking.lastBookableDay = days.lastBookableDay
+      if (date) {
+        this.booking.slots = await this.api.serviceStarts(...this.session(), serviceId, resourceId, date)
+      }
+      return
+    }
     if (resourceId === null) {
       return
     }
@@ -608,33 +654,35 @@ export class ChatWidget {
     if (!date) {
       return
     }
-    // By the night: the stays that can start that day (no slots: /slots answers 400).
-    if (this.byTheNight()) {
-      const options = await this.api.stayOptions(...this.session(), resourceId, date)
-      if (options.maxNights < 1 || !options.firstCheckOutDay || !options.lastCheckOutDay) {
-        this.booking = { ...this.booking, date: null, stayOptions: null, checkOutDay: null }
-        this.error = t().noStayFrom(formatDay(date))
-        return
-      }
-      this.booking.stayOptions = options
+    // A stay: the ones that can start that day.
+    const options = await this.api.stayOptions(...this.session(), resourceId, date)
+    if (options.maxNights < 1 || !options.firstCheckOutDay || !options.lastCheckOutDay) {
+      this.booking = { ...this.booking, date: null, stayOptions: null, checkOutDay: null }
+      this.error = t().noStayFrom(formatDay(date))
       return
     }
-    this.booking.slots = await this.api.slots(...this.session(), resourceId, date)
+    this.booking.stayOptions = options
   }
 
+  private selectedService(): Service | null {
+    return this.booking.services?.find((service) => service.id === this.booking.serviceId) ?? null
+  }
+
+  /** The stay's resource; null while a service is chosen. */
   private selectedResource(): BookableResource | null {
+    if (this.booking.serviceId !== null) {
+      return null
+    }
     return this.booking.resources?.find((resource) => resource.id === this.booking.resourceId) ?? null
   }
 
-  /** The selected resource is booked by the night (a stay), not by time slots. */
-  private byTheNight(): boolean {
-    return this.selectedResource()?.bookingMode === 'NIGHTS'
-  }
-
-  private selectResource(resourceId: number | null) {
+  /** A service or a stay, from the choice's value (see serviceChoice and stayChoice). */
+  private selectChoice(value: string) {
+    const [kind, id] = value.split(':')
     this.booking = {
       ...this.booking,
-      resourceId,
+      serviceId: kind === 'service' ? Number(id) : null,
+      resourceId: kind === 'stay' ? Number(id) : null,
       availableDays: null,
       date: null,
       slots: null,
@@ -642,6 +690,12 @@ export class ChatWidget {
       stayOptions: null,
       checkOutDay: null,
     }
+    void this.run(() => this.loadDaysAndSlots())
+  }
+
+  /** Who performs the service; null: anyone. Their own days, so the day is chosen again. */
+  private selectPerformer(resourceId: number | null) {
+    this.booking = { ...this.booking, resourceId, availableDays: null, date: null, slots: null, slot: null }
     void this.run(() => this.loadDaysAndSlots())
   }
 
@@ -697,14 +751,14 @@ export class ChatWidget {
 
   /** "Request this time" or "Request this stay" in the panel. */
   private book() {
-    const { resourceId, slot, date, checkOutDay } = this.booking
+    const { serviceId, resourceId, slot, date, checkOutDay } = this.booking
+    if (serviceId !== null) {
+      return slot ? this.reserve(serviceBooking(serviceId, resourceId, slot.startAt)) : undefined
+    }
     if (resourceId === null) {
       return
     }
-    if (this.byTheNight()) {
-      return date && checkOutDay ? this.reserve({ resourceId, checkInDay: date, checkOutDay }) : undefined
-    }
-    return slot ? this.reserve({ resourceId, startAt: slot.startAt }) : undefined
+    return date && checkOutDay ? this.reserve({ resourceId, checkInDay: date, checkOutDay }) : undefined
   }
 
   /**
@@ -745,7 +799,7 @@ export class ChatWidget {
           this.addAssistantMessage(t().afterBookingFallback)
         }
         this.bookingDraft = null
-        this.booking = { ...emptyBooking(), resources: this.booking.resources }
+        this.booking = { ...emptyBooking(), services: this.booking.services, resources: this.booking.resources }
         this.view = 'chat'
       } catch (error) {
         // Not verified after all (e.g. another tab): verification first.
@@ -754,10 +808,10 @@ export class ChatWidget {
           this.error = error.message
           return
         }
-        // Most likely the slot was taken meanwhile ("This time is not available
-        // anymore: please choose another slot"), or the stay can't be that long
-        // ("Palm villa is free for 2 nights at most from 2026-01-03"): the
-        // panel on that day, with the reason.
+        // Most likely the time was taken meanwhile ("Nobody is available for
+        // Colour at 2026-01-05T09:10"), or the stay can't be that long ("Palm
+        // villa is free for 2 nights at most from 2026-01-03"): the panel on
+        // that day, with the reason.
         if (error instanceof ApiError && error.status === 400) {
           refused = error.message
           return
@@ -767,16 +821,16 @@ export class ChatWidget {
     })
 
     if (refused) {
-      this.openBooking({ resourceId: booking.resourceId, date: bookingDay(booking) }, { error: refused })
+      this.openBooking(bookingFormOf(booking), { error: refused })
     }
   }
 
   private verifyThenBook(booking: BookingRequest) {
     this.bookAfterVerify = booking
-    this.askToVerify({ resourceId: booking.resourceId, date: bookingDay(booking) })
+    this.askToVerify(bookingFormOf(booking))
   }
 
-  /** Verification first; the panel reopens on the same resource and day afterwards. */
+  /** Verification first; the panel reopens on the same choice and day afterwards. */
   private askToVerify(pending: BookingForm) {
     this.chat.pendingBooking = pending
     this.view = 'chat'
@@ -813,15 +867,20 @@ export class ChatWidget {
 
     // Booking while anonymous.
     if (error instanceof ApiError && error.status === 403) {
-      this.askToVerify({ resourceId: this.booking.resourceId, date: this.booking.date })
+      const { serviceId, resourceId, date } = this.booking
+      this.askToVerify({ serviceId, resourceId, date })
       this.error = error.message
       return
     }
 
     // An unknown widget key, or the business is deactivated. The conversation
-    // is kept: it works again if the business is reactivated. (A reservation or
-    // resource that isn't found has its own message.)
-    if (error instanceof ApiError && error.status === 404 && !/^(Reservation|Resource) not found/.test(error.message)) {
+    // is kept: it works again if the business is reactivated. (A reservation,
+    // resource or service that isn't found has its own message.)
+    if (
+      error instanceof ApiError &&
+      error.status === 404 &&
+      !/^(Reservation|Resource|Service) not found/.test(error.message)
+    ) {
       this.error = t().chatUnavailable
       return
     }
@@ -1227,7 +1286,7 @@ export class ChatWidget {
       'section',
       { className: 'summary', ariaLabel: texts.title },
       h('strong', { textContent: texts.title }),
-      h('span', { textContent: reservation.resourceName }),
+      h('span', { textContent: reservationTitle(reservation) }),
       h('span', { textContent: formatSlot(reservation, reservation.nights) }),
       // The total it was quoted at, even if the price changed since.
       price ? h('span', { textContent: price }) : null,
@@ -1253,20 +1312,26 @@ export class ChatWidget {
     if (!draft) {
       return null
     }
-    // A stay (nights set): its two days instead of a slot's start. An older
-    // backend sends neither: a time slot.
+    // A service (serviceId set; resourceId null: anyone), or a stay (nights
+    // set): its two days instead of a start. Neither can't be booked any more.
+    const serviceId = draft.serviceId ?? null
     const stay =
-      draft.nights != null && draft.checkInDay && draft.checkOutDay
-        ? { checkInDay: draft.checkInDay, checkOutDay: draft.checkOutDay }
+      serviceId === null && draft.resourceId !== null && draft.nights != null && draft.checkInDay && draft.checkOutDay
+        ? { resourceId: draft.resourceId, checkInDay: draft.checkInDay, checkOutDay: draft.checkOutDay }
         : null
+    const request = stay ?? (serviceId === null ? null : serviceBooking(serviceId, draft.resourceId, draft.startAt))
+    if (!request) {
+      return null
+    }
     const date = stay?.checkInDay ?? draft.startAt.slice(0, 10)
     const title = stay ? t().draftStayTitle : t().draftTitle
+    const what = stay ? (draft.resourceName ?? '') : t().serviceWith(draft.serviceName ?? '', draft.resourceName)
 
     return h(
       'section',
       { className: 'summary draft', ariaLabel: title },
       h('strong', { textContent: title }),
-      h('span', { textContent: draft.resourceName }),
+      h('span', { textContent: what }),
       h('span', { textContent: formatSlot(draft, stay ? draft.nights : null) }),
       draft.price != null && draft.currency
         ? h('span', { textContent: formatAmount(draft.price, draft.currency) })
@@ -1281,11 +1346,7 @@ export class ChatWidget {
           textContent: t().confirm,
           disabled: this.busy,
           onclick: () =>
-            void this.reserve(
-              stay
-                ? { resourceId: draft.resourceId, ...stay }
-                : { resourceId: draft.resourceId, startAt: draft.startAt },
-            ),
+            void this.reserve(request),
         }),
         h('button', {
           type: 'button',
@@ -1293,7 +1354,7 @@ export class ChatWidget {
           disabled: this.busy,
           onclick: () =>
             this.openBooking(
-              { resourceId: draft.resourceId, date },
+              { serviceId, resourceId: draft.resourceId, date },
               stay ? { checkOutDay: stay.checkOutDay } : { startAt: draft.startAt },
             ),
         }),
@@ -1521,17 +1582,47 @@ export class ChatWidget {
   }
 
   private renderNewBooking(): HTMLElement {
-    const { resources, resourceId, month, availableDays, lastBookableDay, date, slots, slot, stayOptions, checkOutDay } =
-      this.booking
+    const {
+      services,
+      resources,
+      serviceId,
+      resourceId,
+      month,
+      availableDays,
+      lastBookableDay,
+      date,
+      slots,
+      slot,
+      stayOptions,
+      checkOutDay,
+    } = this.booking
 
-    if (resources === null) {
+    if (services === null || resources === null) {
       return h('p', { className: 'muted', textContent: this.busy ? t().loading : '' })
     }
-    if (resources.length === 0) {
+    if (services.length === 0 && resources.length === 0) {
       return h('p', { className: 'muted', textContent: t().nothingBookable })
     }
 
-    const resourceSelect = h(
+    const service = this.selectedService()
+    const resource = this.selectedResource()
+    const serviceOptions = services.map((candidate) =>
+      h('option', {
+        value: serviceChoice(candidate.id),
+        textContent: describeService(candidate),
+        selected: candidate.id === serviceId,
+      }),
+    )
+    const stayOptionList = resources.map((candidate) =>
+      h('option', {
+        value: stayChoice(candidate.id),
+        textContent: describeResource(candidate),
+        selected: serviceId === null && candidate.id === resourceId,
+      }),
+    )
+    // Grouped only when both can be booked.
+    const both = services.length > 0 && resources.length > 0
+    const choiceSelect = h(
       'label',
       {},
       t().whatToBook,
@@ -1539,27 +1630,55 @@ export class ChatWidget {
         'select',
         {
           disabled: this.busy,
-          onchange: (event: Event) => {
-            const value = (event.target as HTMLSelectElement).value
-            this.selectResource(value ? Number(value) : null)
-          },
+          onchange: (event: Event) => this.selectChoice((event.target as HTMLSelectElement).value),
         },
-        h('option', { value: '', textContent: t().choose, selected: resourceId === null, disabled: true }),
-        ...resources.map((resource) =>
-          h('option', {
-            value: String(resource.id),
-            textContent: describeResource(resource),
-            selected: resource.id === resourceId,
-          }),
-        ),
+        h('option', { value: '', textContent: t().choose, selected: !service && !resource, disabled: true }),
+        ...(both
+          ? [
+              h('optgroup', { label: t().services }, ...serviceOptions),
+              h('optgroup', { label: t().stays }, ...stayOptionList),
+            ]
+          : [...serviceOptions, ...stayOptionList]),
       ),
     )
 
-    if (resourceId === null) {
-      return h('div', { className: 'booking-body' }, resourceSelect)
+    if (!service && !resource) {
+      return h('div', { className: 'booking-body' }, choiceSelect)
     }
 
-    const stay = resources.find((resource) => resource.id === resourceId)?.bookingMode === 'NIGHTS'
+    const description = service?.description
+      ? h('p', { className: 'muted small description', textContent: service.description })
+      : null
+
+    // With one performer, nobody to choose.
+    const performerSelect =
+      service && service.performers.length > 1
+        ? h(
+            'label',
+            {},
+            t().withWhom,
+            h(
+              'select',
+              {
+                disabled: this.busy,
+                onchange: (event: Event) => {
+                  const value = (event.target as HTMLSelectElement).value
+                  this.selectPerformer(value ? Number(value) : null)
+                },
+              },
+              h('option', { value: '', textContent: t().anyone, selected: resourceId === null }),
+              ...service.performers.map((performer) =>
+                h('option', {
+                  value: String(performer.id),
+                  textContent: performer.name,
+                  selected: performer.id === resourceId,
+                }),
+              ),
+            ),
+          )
+        : null
+
+    const stay = resource !== null
     // A stay's check-in day is chosen: the calendar now picks the check-out day,
     // from the first to the last one the backend allows (maybe in a later month).
     const checkOut =
@@ -1665,8 +1784,13 @@ export class ChatWidget {
               ),
             )
 
-    const resource = resources.find((candidate) => candidate.id === resourceId)
-    const resourceName = resource?.name ?? ''
+    // "Colour with Anna": the chosen performer, the only one, or anyone.
+    const performers = service?.performers ?? []
+    const performer =
+      performers.find((candidate) => candidate.id === resourceId) ?? (performers.length === 1 ? performers[0] : null)
+    const title = service ? t().serviceWith(service.name, performer?.name ?? null) : (resource?.name ?? '')
+    const servicePrice =
+      service?.price != null && service.currency ? formatAmount(service.price, service.currency) : null
     // The stay as a slot: from check-in on the first day to check-out on the last.
     const chosenStay =
       checkOut && stayOptions && checkOutDay
@@ -1687,14 +1811,16 @@ export class ChatWidget {
           'div',
           { className: 'booking-summary' },
           h('strong', {
-            textContent: `${resourceName}${t().separator}${formatSlot(chosen, chosenStay?.nights ?? null)}`,
+            textContent: `${title}${t().separator}${formatSlot(chosen, chosenStay?.nights ?? null)}`,
           }),
           chosenStay
             ? h('p', {
                 className: 'small',
                 textContent: `${t().stayTimes(formatTime(chosenStay.startAt), formatTime(chosenStay.endAt))}${t().separator}${t().nights(chosenStay.nights)}${stayTotal ? ` - ${stayTotal}` : ''}`,
               })
-            : null,
+            : servicePrice
+              ? h('p', { className: 'small', textContent: servicePrice })
+              : null,
           h('p', {
             className: 'muted small',
             textContent: t().requestNote,
@@ -1713,7 +1839,16 @@ export class ChatWidget {
         )
       : null
 
-    return h('div', { className: 'booking-body' }, resourceSelect, calendar, slotList, summary)
+    return h(
+      'div',
+      { className: 'booking-body' },
+      choiceSelect,
+      description,
+      performerSelect,
+      calendar,
+      slotList,
+      summary,
+    )
   }
 
 }

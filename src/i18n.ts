@@ -106,6 +106,18 @@ export interface Strings {
 
   /** After a price per night: "799.50 AED / night". */
   perNight: string
+
+  // A service (a haircut, a consultation), performed by one person or anyone.
+  /** The groups of the choice, when both kinds can be booked. */
+  services: string
+  stays: string
+  withWhom: string
+  /** The default performer choice: the business picks who is free. */
+  anyone: string
+  /** "Colour with Anna"; null: "Colour with anyone available". */
+  serviceWith: (service: string, performer: string | null) => string
+  /** A service's length, e.g. "1 h 30 min". */
+  duration: (minutes: number) => string
   /** A doctor's specialty, in the resource choice. */
   specialties: Record<Specialty, string>
   /** The booking form card the assistant prepared. */
@@ -139,6 +151,14 @@ export interface Strings {
   waitingForEmployee: string
   employeeJoined: string
   backToAssistant: string
+}
+
+/** 90, "h", "min" → "1 h 30 min"; whole hours drop the minutes, under an hour the hours. */
+function hoursAndMinutes(minutes: number, hourUnit: string, minuteUnit: string): string {
+  const hours = Math.floor(minutes / 60)
+  const rest = minutes % 60
+  const parts = [hours > 0 ? `${hours} ${hourUnit}` : null, rest > 0 || hours === 0 ? `${rest} ${minuteUnit}` : null]
+  return parts.filter(Boolean).join(' ')
 }
 
 const en: Strings = {
@@ -223,6 +243,13 @@ const en: Strings = {
   draftStayTitle: 'Book this stay?',
 
   perNight: '/ night',
+  services: 'Services',
+  stays: 'Stays',
+  withWhom: 'With whom?',
+  anyone: 'Anyone',
+  serviceWith: (service, performer) =>
+    performer ? `${service} with ${performer}` : `${service} with anyone available`,
+  duration: (minutes) => hoursAndMinutes(minutes, 'h', 'min'),
   specialties: {
     GENERAL_PRACTICE: 'General practice',
     FAMILY_MEDICINE: 'Family medicine',
@@ -363,6 +390,13 @@ const fr: Strings = {
   draftStayTitle: 'Réserver ce séjour ?',
 
   perNight: '/ nuit',
+  services: 'Prestations',
+  stays: 'Séjours',
+  withWhom: 'Avec qui ?',
+  anyone: 'Peu importe',
+  serviceWith: (service, performer) =>
+    performer ? `${service} avec ${performer}` : `${service} avec la première personne disponible`,
+  duration: (minutes) => hoursAndMinutes(minutes, 'h', 'min'),
   specialties: {
     GENERAL_PRACTICE: 'Médecine générale',
     FAMILY_MEDICINE: 'Médecine familiale',
@@ -503,6 +537,13 @@ const es: Strings = {
   draftStayTitle: '¿Reservar esta estancia?',
 
   perNight: '/ noche',
+  services: 'Servicios',
+  stays: 'Estancias',
+  withWhom: '¿Con quién?',
+  anyone: 'Cualquiera',
+  serviceWith: (service, performer) =>
+    performer ? `${service} con ${performer}` : `${service} con cualquier persona disponible`,
+  duration: (minutes) => hoursAndMinutes(minutes, 'h', 'min'),
   specialties: {
     GENERAL_PRACTICE: 'Medicina general',
     FAMILY_MEDICINE: 'Medicina familiar',
@@ -648,6 +689,13 @@ const ru: Strings = {
   draftStayTitle: 'Забронировать это проживание?',
 
   perNight: '/ ночь',
+  services: 'Услуги',
+  stays: 'Проживание',
+  withWhom: 'К кому?',
+  anyone: 'Любой специалист',
+  serviceWith: (service, performer) =>
+    performer ? `${service}: ${performer}` : `${service}: любой свободный специалист`,
+  duration: (minutes) => hoursAndMinutes(minutes, 'ч', 'мин'),
   specialties: {
     GENERAL_PRACTICE: 'Общая практика',
     FAMILY_MEDICINE: 'Семейная медицина',
@@ -797,6 +845,13 @@ const ar: Strings = {
   draftStayTitle: 'هل تريد حجز هذه الإقامة؟',
 
   perNight: '/ ليلة',
+  services: 'الخدمات',
+  stays: 'الإقامات',
+  withWhom: 'مع من؟',
+  anyone: 'أي شخص',
+  serviceWith: (service, performer) =>
+    performer ? `${service} مع ${performer}` : `${service} مع أي شخص متاح`,
+  duration: (minutes) => hoursAndMinutes(minutes, 'ساعة', 'دقيقة'),
   specialties: {
     GENERAL_PRACTICE: 'الطب العام',
     FAMILY_MEDICINE: 'طب الأسرة',
@@ -939,6 +994,13 @@ const el: Strings = {
   draftStayTitle: 'Κράτηση αυτής της διαμονής;',
 
   perNight: '/ νύχτα',
+  services: 'Υπηρεσίες',
+  stays: 'Διαμονές',
+  withWhom: 'Με ποιον;',
+  anyone: 'Οποιοσδήποτε',
+  serviceWith: (service, performer) =>
+    performer ? `${service} με ${performer}` : `${service} με οποιονδήποτε διαθέσιμο`,
+  duration: (minutes) => hoursAndMinutes(minutes, 'ώρ.', 'λεπ.'),
   specialties: {
     GENERAL_PRACTICE: 'Γενική ιατρική',
     FAMILY_MEDICINE: 'Οικογενειακή ιατρική',
