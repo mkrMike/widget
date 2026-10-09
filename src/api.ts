@@ -77,6 +77,14 @@ export interface ChatReply {
    * slot. Null: no booking is ready to confirm (the card is hidden).
    */
   bookingDraft?: BookingDraft | null
+  /**
+   * Seconds left of the chat session when this reply was sent (normally 300):
+   * the token expires 5 minutes after the visitor's last action. Never compared
+   * with the browser clock: the countdown starts when the reply arrives. Also
+   * on the contact, verify and resend replies. Absent from an older backend:
+   * no countdown.
+   */
+  sessionExpiresInSeconds?: number
 }
 
 /**
@@ -135,6 +143,13 @@ export interface ContactReply {
   verificationRequired: Channel[]
   /** Where the code just went, masked ("j***@example.com"). Absent from an older backend. */
   codeSentTo?: string | null
+  /** See ChatReply.sessionExpiresInSeconds. */
+  sessionExpiresInSeconds?: number
+}
+
+/** The reply to a resent code (200; an older backend answered 204 without a body). */
+export interface ResendReply {
+  sessionExpiresInSeconds?: number
 }
 
 export interface VerifyReply {
@@ -153,6 +168,8 @@ export interface VerifyReply {
   assistantMessage: string | null
   bookingForm: BookingForm | null
   assistantMessageId?: number | null
+  /** Of the NEW token once the verification is complete. See ChatReply.sessionExpiresInSeconds. */
+  sessionExpiresInSeconds?: number
 }
 
 /**
@@ -365,9 +382,9 @@ export function createApi({ widgetKey, apiUrl }: WidgetConfig) {
         accessToken,
       ),
 
-    /** A new code on the same channel (204). */
+    /** A new code on the same channel; it restarts the session (undefined: an older backend's 204). */
     resend: (conversationId: number, accessToken: string, channel: Channel) =>
-      post<void>(`/${conversationId}/verify/resend`, { channel }, accessToken),
+      post<ResendReply | undefined>(`/${conversationId}/verify/resend`, { channel }, accessToken),
 
     // Booking panel. Browsing works while anonymous; booking answers 403 until
     // the visitor is verified. Existing bookings are only reached by their code.

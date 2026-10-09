@@ -41,6 +41,14 @@ export interface StoredChat {
   verified: boolean
   /** The booking panel to open once the visitor is verified. */
   pendingBooking: BookingForm | null
+  /**
+   * When the session ends (ms on this computer's clock): set from the seconds
+   * left that each reply carries, never from a server time. Null: unknown (an
+   * older backend), so no countdown. Kept so a reload continues the countdown.
+   */
+  sessionEndsAt: number | null
+  /** The last seconds-left value received (about 300): a wrong code restarts the session to it. */
+  sessionSeconds: number | null
   mode: ConversationMode
   messages: ChatMessage[]
 }
@@ -57,6 +65,8 @@ export function emptyChat(): StoredChat {
     codeSentTo: null,
     verified: false,
     pendingBooking: null,
+    sessionEndsAt: null,
+    sessionSeconds: null,
     mode: 'ASSISTANT',
     messages: [],
   }

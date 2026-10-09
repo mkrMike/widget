@@ -180,6 +180,12 @@ textarea {
   font-size: 0.8rem;
 }
 
+/* The last minute of the session. */
+.info.session-timer {
+  color: var(--danger);
+  font-weight: 600;
+}
+
 .ai-notice {
   text-align: center;
   font-size: 0.72rem;

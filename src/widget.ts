@@ -49,6 +49,12 @@ const contactFields: (keyof ContactDetails)[] = ['firstName', 'lastName', 'email
 /** "Resend code" is active this long after a code was sent. */
 const resendDelayMs = 30_000
 
+/** The session countdown is shown during its last minute. */
+const sessionWarningSeconds = 60
+
+/** 42 seconds → "0:42". */
+const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
+
 /** The booking panel reopens on the same service or stay, on the start's or the check-in day. */
 const bookingFormOf = (booking: BookingRequest): BookingForm =>
   'serviceId' in booking
@@ -114,6 +120,8 @@ export class ChatWidget {
   private blockedUntil = 0
   /** Updates the resend countdown and ends the 429 wait. */
   private ticker: number | null = null
+  /** Counts the session down once a second while a conversation has a deadline. */
+  private sessionTimer: number | null = null
   /** A chat message is on its way: the "…" bubble. */
   private sendingMessage = false
   /**
@@ -159,6 +167,10 @@ export class ChatWidget {
 
     this.render()
     this.syncLiveStream()
+    // A reload after the deadline: the session is already over.
+    if (this.sessionLeft() === 0) {
+      this.expireSession()
+    }
   }
 
   // Chat and verification
@@ -180,10 +192,10 @@ export class ChatWidget {
           if (!(error instanceof ApiError && error.sessionExpired)) {
             throw error
           }
-          // The chat ended meanwhile (e.g. closed while the laptop slept and
-          // the live event was missed): a new one starts with this message.
-          this.endChat()
-          reply = await this.startConversation(text)
+          // The session ran out meanwhile (the local countdown drifted, or the
+          // laptop slept): a new chat starts with this message, after saying so.
+          this.endChat('expired')
+          reply = await this.startConversation(text, t().sessionExpired)
         }
       }
 
@@ -201,6 +213,7 @@ export class ChatWidget {
 
       this.chat.conversationId = reply.conversationId
       this.chat.accessToken = reply.accessToken
+      this.restartSession(reply.sessionExpiresInSeconds)
 
       // Null messageId: the anonymous limit is reached and the message was not stored.
       const limitReached = reply.messageId === null
@@ -250,24 +263,31 @@ export class ChatWidget {
    * previous one's messages leave the window and storage, so two conversations
    * never mix (also for privacy on shared computers): one line remains.
    */
-  private async startConversation(text: string): Promise<ChatReply> {
+  private async startConversation(text: string, previousNotice = t().previousChatEnded): Promise<ChatReply> {
     const reply = await this.api.start(text)
     // Without a conversation, any message left is from one that ended.
     this.chat.messages =
-      this.chat.messages.length > 0 ? [{ from: 'notice', text: t().previousChatEnded, at: Date.now() }] : []
+      this.chat.messages.length > 0 ? [{ from: 'notice', text: previousNotice, at: Date.now() }] : []
     return reply
   }
 
-  /** The conversation can't be continued (closed, or its token is no longer valid). */
-  private endChat() {
+  /**
+   * The conversation can't be continued: closed ('ended'), or its session ran
+   * out ('expired': the countdown reached 0, or the backend refused the token).
+   * Either way its live stream stops (see commit) and the next message starts a
+   * new conversation.
+   */
+  private endChat(reason: 'ended' | 'expired' = 'ended') {
     // Once, even if the closed event, a closed reply and a refused request all
     // say so. (A new conversation keeps no earlier "chat ended" line.)
+    const notice = reason === 'expired' ? t().sessionExpired : t().chatEnded
     const messages = this.chat.messages
     const alreadyEnded =
-      this.chat.conversationId === null && messages.some((message) => message.text === t().chatEnded)
+      this.chat.conversationId === null &&
+      messages.some((message) => message.text === t().chatEnded || message.text === t().sessionExpired)
     this.chat = {
       ...emptyChat(),
-      messages: alreadyEnded ? messages : [...messages, { from: 'notice', text: t().chatEnded }],
+      messages: alreadyEnded ? messages : [...messages, { from: 'notice', text: notice }],
     }
     this.view = 'chat'
     this.booking = emptyBooking()
@@ -374,6 +394,7 @@ export class ChatWidget {
     return this.run(async () => {
       try {
         const reply = await this.api.contact(...this.session(), details)
+        this.restartSession(reply.sessionExpiresInSeconds)
         this.chat.verificationRequired = reply.verificationRequired
         this.chat.step = reply.verificationRequired.length > 0 ? 'verify' : 'chat'
         this.codeSent(reply.codeSentTo)
@@ -403,10 +424,16 @@ export class ChatWidget {
         reply = await this.api.verify(...this.session(), channel, code, bookingPending)
       } catch (error) {
         if (this.showFormError(error, 'code')) {
+          // Typing a code restarts the session even when it is wrong, but an
+          // error carries no seconds: back to the last value received.
+          if (error instanceof ApiError && error.status === 400) {
+            this.restartSession(this.chat.sessionSeconds ?? undefined)
+          }
           return
         }
         throw error
       }
+      this.restartSession(reply.sessionExpiresInSeconds)
       this.codeDraft = ''
 
       // E.g. verified to talk to an employee, and none can answer: the reply,
@@ -449,8 +476,9 @@ export class ChatWidget {
     const channel = this.chat.verificationRequired[0]
     return this.run(async () => {
       try {
-        await this.api.resend(...this.session(), channel)
-        // Same destination: the resend answers 204 without it.
+        const reply = await this.api.resend(...this.session(), channel)
+        this.restartSession(reply?.sessionExpiresInSeconds)
+        // Same destination: the resend does not repeat it.
         this.codeSent(this.chat.codeSentTo)
         this.info = t().codeResent
       } catch (error) {
@@ -554,6 +582,76 @@ export class ChatWidget {
       Object.assign(resend, this.resendButton())
     }
     this.keepTicking()
+  }
+
+  // Session countdown: the chat token expires 5 minutes after the visitor's last
+  // action. Every reply that restarts it says how many seconds are left; the
+  // countdown starts from that value, never from a server time.
+
+  /** A reply restarted the session. Absent (an older backend): no countdown. */
+  private restartSession(seconds: number | undefined) {
+    if (typeof seconds !== 'number' || !Number.isFinite(seconds)) {
+      return
+    }
+    this.chat.sessionSeconds = seconds
+    this.chat.sessionEndsAt = Date.now() + Math.max(0, seconds) * 1000
+  }
+
+  /** Whole seconds left; null while there is no conversation or no deadline. */
+  private sessionLeft(): number | null {
+    const endsAt = this.chat.sessionEndsAt
+    if (endsAt === null || this.chat.conversationId === null) {
+      return null
+    }
+    return Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
+  }
+
+  /** Ticks every second while a conversation has a deadline, even with the panel closed. */
+  private keepSessionTimer() {
+    const counting = this.sessionLeft() !== null
+    if (counting && this.sessionTimer === null) {
+      this.sessionTimer = window.setInterval(() => this.tickSession(), 1000)
+    } else if (!counting && this.sessionTimer !== null) {
+      window.clearInterval(this.sessionTimer)
+      this.sessionTimer = null
+    }
+  }
+
+  private tickSession() {
+    const left = this.sessionLeft()
+    if (left === null) {
+      this.keepSessionTimer()
+    } else if (left === 0) {
+      this.expireSession()
+    } else if (left <= sessionWarningSeconds) {
+      // Only the text changes (no re-render while the visitor types); the line
+      // appears with a full render the first second.
+      const lines = this.root.querySelectorAll('.session-timer')
+      if (lines.length > 0) {
+        lines.forEach((line) => (line.textContent = t().sessionEndsIn(clock(left))))
+      } else {
+        this.render()
+      }
+    }
+  }
+
+  /** The countdown reached 0: the conversation ends, its live stream stops (commit), the next message starts a new one. */
+  private expireSession() {
+    if (this.chat.conversationId === null) {
+      return
+    }
+    this.endChat('expired')
+    this.error = null
+    this.unread = !this.open
+    this.commit()
+  }
+
+  /** "Your session ends in 0:42" during the last minute; nothing before. */
+  private renderSessionTimer(): HTMLElement | null {
+    const left = this.sessionLeft()
+    return left !== null && left > 0 && left <= sessionWarningSeconds
+      ? h('p', { className: 'info session-timer', role: 'timer', textContent: t().sessionEndsIn(clock(left)) })
+      : null
   }
 
   // Booking panel
@@ -860,8 +958,10 @@ export class ChatWidget {
   }
 
   private handleError(error: unknown) {
+    // The backend refused the token (401, or 400 "Invalid conversation access
+    // token"): the session is over, whatever the local countdown says.
     if (error instanceof ApiError && error.sessionExpired) {
-      this.endChat()
+      this.endChat('expired')
       return
     }
 
@@ -1083,6 +1183,7 @@ export class ChatWidget {
 
   private render() {
     this.keepTicking()
+    this.keepSessionTimer()
     // Live events re-render while the visitor types: keep the focus and caret.
     const active = this.root.activeElement
     const typing =
@@ -1147,7 +1248,9 @@ export class ChatWidget {
           { className: 'panel', ariaLabel: t().book },
           header,
           body,
-          errorLine ? h('div', { className: 'footer' }, errorLine) : null,
+          errorLine || this.renderSessionTimer()
+            ? h('div', { className: 'footer' }, this.renderSessionTimer(), errorLine)
+            : null,
         ),
       )
       return
@@ -1181,6 +1284,7 @@ export class ChatWidget {
       h(
         'div',
         { className: 'footer' },
+        this.renderSessionTimer(),
         errorLine,
         this.renderStepForm(),
         this.renderSummary(),

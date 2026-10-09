@@ -37,6 +37,25 @@ widget key, so reloading the page continues the chat.
 If the access token is no longer valid, the widget forgets the conversation
 and the next message starts a new one.
 
+### Session expiry
+
+The access token expires 5 minutes after the visitor's last action: sending a
+message, submitting the contact form, typing a code (even a wrong one),
+resending a code. Booking in the panel, the live stream and employee replies
+don't count. The replies to those actions carry `sessionExpiresInSeconds` (the
+seconds left, normally 300); the widget counts down from it when the reply
+arrives, never against a server time, and kept in `sessionStorage` so a reload
+continues the countdown.
+
+- More than 60 s left: nothing. In the last 60 s: "Your session ends in 0:42"
+  above the input (and in the booking panel); any action above hides it again.
+- At 0, or when a call answers 400 "Invalid conversation access token": "Your
+  session has expired", the live stream stops, and the next message starts a
+  new conversation (without the old token).
+- A wrong code has no seconds in its 400 reply: the countdown restarts to the
+  last value received.
+- An older backend without the field: no countdown, as before.
+
 ## Booking panel
 
 Only the visitor books or cancels; the assistant prepares or opens:

@@ -76,6 +76,10 @@ export interface Strings {
   chatEnded: string
   /** The one line kept from the previous conversation when a new one starts. */
   previousChatEnded: string
+  /** The last minute of the session: "Your session ends in 0:42" (time as m:ss). */
+  sessionEndsIn: (time: string) => string
+  /** The session ran out (countdown at 0, or the backend refused the token): a new chat starts with the next message. */
+  sessionExpired: string
 
   loading: string
   nothingBookable: string
@@ -218,6 +222,8 @@ const en: Strings = {
   serverError: 'Something went wrong on our side. Please try again.',
   chatEnded: 'This chat has ended. Send a message to start a new one.',
   previousChatEnded: 'Previous conversation ended',
+  sessionEndsIn: (time) => `Your session ends in ${time}`,
+  sessionExpired: 'Your session has expired. Send a message to start a new chat.',
 
   loading: 'Loading…',
   nothingBookable: 'Nothing can be booked online at the moment.',
@@ -365,6 +371,8 @@ const fr: Strings = {
   serverError: 'Un problème est survenu de notre côté. Veuillez réessayer.',
   chatEnded: 'Cette conversation est terminée. Envoyez un message pour en commencer une nouvelle.',
   previousChatEnded: 'Conversation précédente terminée',
+  sessionEndsIn: (time) => `Votre session se termine dans ${time}`,
+  sessionExpired: 'Votre session a expiré. Envoyez un message pour commencer une nouvelle conversation.',
 
   loading: 'Chargement…',
   nothingBookable: 'Rien ne peut être réservé en ligne pour le moment.',
@@ -512,6 +520,8 @@ const es: Strings = {
   serverError: 'Algo ha fallado por nuestra parte. Inténtalo de nuevo.',
   chatEnded: 'Este chat ha terminado. Envía un mensaje para empezar uno nuevo.',
   previousChatEnded: 'Conversación anterior finalizada',
+  sessionEndsIn: (time) => `Tu sesión termina en ${time}`,
+  sessionExpired: 'Tu sesión ha caducado. Envía un mensaje para empezar un nuevo chat.',
 
   loading: 'Cargando…',
   nothingBookable: 'Por el momento no se puede reservar nada en línea.',
@@ -660,6 +670,8 @@ const ru: Strings = {
   serverError: 'На нашей стороне что-то пошло не так. Повторите попытку.',
   chatEnded: 'Этот чат завершён. Отправьте сообщение, чтобы начать новый.',
   previousChatEnded: 'Предыдущий разговор завершён',
+  sessionEndsIn: (time) => `Сеанс завершится через ${time}`,
+  sessionExpired: 'Сеанс истёк. Отправьте сообщение, чтобы начать новый чат.',
 
   loading: 'Загрузка…',
   nothingBookable: 'Сейчас ничего нельзя забронировать онлайн.',
@@ -812,6 +824,8 @@ const ar: Strings = {
   serverError: 'حدث خطأ من جهتنا. يُرجى المحاولة مرة أخرى.',
   chatEnded: 'انتهت هذه المحادثة. أرسل رسالة لبدء محادثة جديدة.',
   previousChatEnded: 'انتهت المحادثة السابقة',
+  sessionEndsIn: (time) => `تنتهي جلستك خلال ${time}`,
+  sessionExpired: 'انتهت جلستك. أرسل رسالة لبدء محادثة جديدة.',
 
   loading: 'جارٍ التحميل…',
   nothingBookable: 'لا يتوفر الحجز عبر الإنترنت في الوقت الحالي.',
@@ -969,6 +983,8 @@ const el: Strings = {
   serverError: 'Κάτι πήγε στραβά από την πλευρά μας. Δοκιμάστε ξανά.',
   chatEnded: 'Αυτή η συνομιλία έληξε. Στείλτε ένα μήνυμα για να ξεκινήσετε νέα.',
   previousChatEnded: 'Η προηγούμενη συνομιλία έληξε',
+  sessionEndsIn: (time) => `Η συνεδρία σας λήγει σε ${time}`,
+  sessionExpired: 'Η συνεδρία σας έληξε. Στείλτε ένα μήνυμα για να ξεκινήσετε νέα συνομιλία.',
 
   loading: 'Φόρτωση…',
   nothingBookable: 'Δεν υπάρχει τίποτα διαθέσιμο για online κράτηση αυτή τη στιγμή.',
