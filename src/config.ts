@@ -21,6 +21,7 @@ export function readConfig(): WidgetConfig | null {
     return null
   }
 
-  const apiUrl = (script?.dataset.apiUrl ?? 'http://localhost:8080').replace(/\/+$/, '')
+  // Production by default; data-api-url overrides it (e.g. a local backend in development).
+  const apiUrl = (script?.dataset.apiUrl ?? 'https://api.samatrica.com').replace(/\/+$/, '')
   return { widgetKey, apiUrl, lang: script?.dataset.lang }
 }

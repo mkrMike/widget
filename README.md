@@ -14,7 +14,8 @@ No login: it talks to the backend's public API (`/api/public/widgets/{key}/chat/
 ```
 
 - `data-widget-key` (required): the public key of a row in the backend's `widget` table.
-- `data-api-url`: the backend origin, `http://localhost:8080` by default.
+- `data-api-url`: the backend origin, `https://api.samatrica.com` by default.
+  Set it to `http://localhost:8080` in development (as `index.html` does).
 
 The widget renders in a Shadow DOM, so the host page's CSS doesn't affect it.
 The conversation (id, access token, messages) is kept in `sessionStorage` per
