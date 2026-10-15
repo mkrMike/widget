@@ -191,9 +191,57 @@ textarea {
   font-size: 0.72rem;
 }
 
-.ai-notice a {
-  color: inherit;
+/* "disclaimer": a link that opens the disclaimer over the chat. */
+.disclaimer-link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
   text-decoration: underline;
+  cursor: pointer;
+}
+
+.disclaimer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 1.1rem;
+  overflow-y: auto;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.disclaimer p {
+  margin: 0;
+}
+
+.disclaimer a {
+  color: var(--accent);
+}
+
+.disclaimer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 1rem;
+}
+
+.disclaimer-close {
+  padding: 0 0.4rem;
+  border: none;
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.disclaimer > .primary {
+  align-self: flex-start;
+  margin-top: auto;
 }
 
 .form-buttons {
